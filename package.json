@@ -18,7 +18,8 @@
     "multer": "^1.4.5-lts.1",
     "form-data": "^4.0.0",
     "node-fetch": "^3.3.2",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "busboy": "^1.6.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
