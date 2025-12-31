@@ -31,7 +31,15 @@ export default async function handler(req, res) {
       }
     })
 
-    const data = await response.json()
+    const responseText = await response.text()
+    let data
+    try {
+      data = JSON.parse(responseText)
+    } catch (e) {
+      console.error('Ошибка парсинга ответа от Replicate:', e)
+      console.error('Ответ (первые 500 символов):', responseText.substring(0, 500))
+      return res.status(500).json({ error: 'Invalid response from Replicate API' })
+    }
     
     if (!response.ok) {
       return res.status(response.status).json(data)

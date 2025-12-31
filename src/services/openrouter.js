@@ -26,8 +26,20 @@ async function uploadImageToReplicate(photoFile) {
     throw new Error(errorData.error || errorData.message || `Ошибка загрузки изображения: ${response.status}`)
   }
   
-  const data = await response.json()
-  console.log('✅ Изображение загружено в Replicate Files API')
+    let data
+    try {
+      const text = await response.text()
+      data = text ? JSON.parse(text) : null
+    } catch (e) {
+      console.error('Ошибка парсинга ответа upload:', e)
+      throw new Error('Некорректный ответ от API при загрузке изображения')
+    }
+    
+    if (!data) {
+      throw new Error('Пустой ответ от API при загрузке изображения')
+    }
+    
+    console.log('✅ Изображение загружено в Replicate Files API')
   console.log('  Ответ:', data)
   console.log('  URL изображения:', data.url || data.urls?.get)
   
@@ -54,7 +66,19 @@ async function waitForPrediction(predictionId) {
       throw new Error(`Ошибка проверки статуса генерации: ${response.status} - ${errorData.error || 'Неизвестная ошибка'}`)
     }
     
-    const data = await response.json()
+    let data
+    try {
+      const text = await response.text()
+      data = text ? JSON.parse(text) : null
+    } catch (e) {
+      console.error('Ошибка парсинга ответа статуса:', e)
+      throw new Error('Некорректный ответ от API при проверке статуса')
+    }
+    
+    if (!data) {
+      throw new Error('Пустой ответ от API при проверке статуса')
+    }
+    
     console.log('Статус prediction:', data.status, 'Output:', data.output)
     
     if (data.status === 'succeeded') {
@@ -241,7 +265,14 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Ошибка API' }))
+      let errorData
+      try {
+        const text = await response.text()
+        errorData = text ? JSON.parse(text) : { error: 'Ошибка API' }
+      } catch (e) {
+        console.error('Ошибка парсинга ответа API:', e)
+        errorData = { error: `API ошибка: ${response.status}` }
+      }
       console.error('API ошибка:', errorData)
       
       if (response.status === 402) {
@@ -258,7 +289,19 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
       throw new Error(errorData.error?.message || errorData.error || errorData.detail || `API ошибка: ${response.status}`)
     }
 
-    const prediction = await response.json()
+    let prediction
+    try {
+      const text = await response.text()
+      prediction = text ? JSON.parse(text) : null
+    } catch (e) {
+      console.error('Ошибка парсинга ответа prediction:', e)
+      throw new Error('Некорректный ответ от API при создании prediction')
+    }
+    
+    if (!prediction) {
+      throw new Error('Пустой ответ от API')
+    }
+    
     console.log('Prediction создан:', prediction.id)
     
     if (!prediction.id) {

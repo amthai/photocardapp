@@ -23,14 +23,20 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'API ключ не настроен' })
     }
 
-    // Парсим body если это строка
+    // В Vercel body уже распарсен автоматически для application/json
+    // Если это строка, парсим вручную
     let body = req.body
     if (typeof body === 'string') {
       try {
         body = JSON.parse(body)
       } catch (e) {
-        return res.status(400).json({ error: 'Invalid JSON' })
+        console.error('Ошибка парсинга JSON body:', e)
+        return res.status(400).json({ error: 'Invalid JSON in request body' })
       }
+    }
+
+    if (!body || !body.input) {
+      return res.status(400).json({ error: 'Missing required fields: input' })
     }
 
     console.log('🔍 ПОЛУЧЕН ЗАПРОС НА СОЗДАНИЕ PREDICTION')
@@ -46,7 +52,15 @@ export default async function handler(req, res) {
       body: JSON.stringify(body)
     })
 
-    const data = await response.json()
+    const responseText = await response.text()
+    let data
+    try {
+      data = JSON.parse(responseText)
+    } catch (e) {
+      console.error('Ошибка парсинга ответа от Replicate:', e)
+      console.error('Ответ (первые 500 символов):', responseText.substring(0, 500))
+      return res.status(500).json({ error: 'Invalid response from Replicate API' })
+    }
     
     if (!response.ok) {
       console.error('❌ Replicate API error:', response.status)
@@ -58,7 +72,7 @@ export default async function handler(req, res) {
     res.json(data)
   } catch (error) {
     console.error('Prediction error:', error)
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: error.message || 'Internal server error' })
   }
 }
 
