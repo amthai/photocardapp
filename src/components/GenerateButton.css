@@ -1,0 +1,28 @@
+.generate-button {
+  width: 100%;
+  padding: 18px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 16px;
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.generate-button:hover:not(.disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+}
+
+.generate-button:active:not(.disabled) {
+  transform: translateY(0);
+}
+
+.generate-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
