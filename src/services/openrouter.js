@@ -59,7 +59,8 @@ async function waitForPrediction(predictionId) {
   let attempts = 0
   
   while (attempts < maxAttempts) {
-    const response = await fetch(`${API_BASE_URL}/predictions/${predictionId}`)
+    // Используем query параметр вместо пути для совместимости с Vercel
+    const response = await fetch(`${API_BASE_URL}/predictions?id=${predictionId}`)
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Ошибка проверки статуса' }))
