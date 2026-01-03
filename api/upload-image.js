@@ -103,6 +103,10 @@ export default async function handler(req, res) {
 
     const data = await response.json()
     console.log('✅ Файл успешно загружен в Replicate Files API')
+    console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
+    console.log('  data.url:', data.url)
+    console.log('  data.urls:', data.urls)
+    console.log('  data.urls?.get:', data.urls?.get)
     
     res.json(data)
   } catch (error) {

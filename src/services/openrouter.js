@@ -43,9 +43,23 @@ async function uploadImageToReplicate(photoFile) {
   console.log('  Ответ:', data)
   console.log('  URL изображения:', data.url || data.urls?.get)
   
-  // Replicate Files API возвращает объект с полем url или urls.get
-  // Также может быть в формате https://replicate.delivery/pbxt/...
-  let imageUrl = data.url || data.urls?.get || data.urls?.get || data
+  // Replicate Files API возвращает объект с полем urls.get (это функция для получения URL)
+  // Или может быть просто строка с URL
+  let imageUrl = null
+  
+  // Проверяем разные варианты формата ответа
+  if (data.url) {
+    imageUrl = data.url
+  } else if (data.urls && typeof data.urls.get === 'function') {
+    // Если это функция, вызываем её (но обычно это уже строка)
+    imageUrl = data.urls.get
+  } else if (data.urls && typeof data.urls.get === 'string') {
+    imageUrl = data.urls.get
+  } else if (typeof data === 'string') {
+    imageUrl = data
+  } else if (data.urls && data.urls.get) {
+    imageUrl = data.urls.get
+  }
   
   // Если это объект с полем url внутри
   if (typeof imageUrl === 'object' && imageUrl.url) {
@@ -155,7 +169,14 @@ export async function generateCard(photoFile, style) {
     let imageInput
     try {
       imageInput = await uploadImageToReplicate(photoFile)
-      console.log('✅ Изображение загружено в Replicate Files API, URL:', imageInput)
+      console.log('✅ Изображение загружено в Replicate Files API')
+      console.log('  URL:', imageInput)
+      console.log('  URL валидный:', imageInput.startsWith('http'))
+      
+      // Проверяем, что URL валидный
+      if (!imageInput || !imageInput.startsWith('http')) {
+        throw new Error('Получен невалидный URL от Replicate Files API')
+      }
     } catch (uploadError) {
       console.warn('⚠️ Загрузка в Replicate Files API не работает:', uploadError.message)
       console.warn('⚠️ Используем Data URI как fallback')
@@ -163,12 +184,31 @@ export async function generateCard(photoFile, style) {
       // Fallback: конвертируем в Data URI
       const reader = new FileReader()
       imageInput = await new Promise((resolve, reject) => {
-        reader.onloadend = () => resolve(reader.result)
-        reader.onerror = reject
+        reader.onloadend = () => {
+          const result = reader.result
+          if (!result || !result.startsWith('data:image/')) {
+            reject(new Error('Не удалось конвертировать изображение в Data URI'))
+          } else {
+            resolve(result)
+          }
+        }
+        reader.onerror = () => reject(new Error('Ошибка чтения файла'))
         reader.readAsDataURL(photoFile)
       })
-      console.log('✅ Изображение конвертировано в Data URI, длина:', imageInput.length)
+      console.log('✅ Изображение конвертировано в Data URI')
+      console.log('  Длина:', imageInput.length, 'символов')
+      console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
     }
+    
+    // Финальная проверка, что изображение есть
+    if (!imageInput) {
+      throw new Error('Не удалось получить изображение для генерации')
+    }
+    
+    console.log('🔍 ПРОВЕРКА ИЗОБРАЖЕНИЯ ПЕРЕД ОТПРАВКОЙ:')
+    console.log('  Изображение присутствует:', !!imageInput)
+    console.log('  Тип:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'НЕИЗВЕСТНО')
+    console.log('  Первые 100 символов:', imageInput.substring(0, 100))
     
     // Используем Replicate с выбранной моделью (по умолчанию Nano Banana)
     return await generateWithReplicate(imageInput, fullPrompt, style)
@@ -261,24 +301,30 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
       }
     }
     
-    console.log('Отправляем запрос через прокси...')
-    console.log('Модель:', modelVersion)
-    console.log('Параметры запроса:', {
-      ...requestBody.input,
-      image: imageInput.startsWith('http') ? '[URL изображения]' : '[Data URI, длина: ' + imageInput.length + ']'
-    })
-    console.log('Параметры генерации:', {
-      strength: requestBody.input.strength,
-      aspect_ratio: requestBody.input.aspect_ratio,
-      model: modelVersion
-    })
+    // Финальная проверка перед отправкой
+    if (!requestBody.input.image && !requestBody.input.init_image) {
+      throw new Error('КРИТИЧЕСКАЯ ОШИБКА: Изображение отсутствует в запросе!')
+    }
+    
+    // Проверяем, что изображение действительно в запросе
+    const requestBodyString = JSON.stringify(requestBody)
+    const hasImageInRequest = requestBodyString.includes(imageInput.substring(0, 50))
+    
+    console.log('🔍 ФИНАЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ:')
+    console.log('  Модель:', modelVersion)
+    console.log('  Изображение в requestBody.input.image:', !!requestBody.input.image)
+    console.log('  Изображение в requestBody.input.init_image:', !!requestBody.input.init_image)
+    console.log('  Изображение присутствует в JSON строке:', hasImageInRequest)
+    console.log('  Размер JSON запроса:', requestBodyString.length, 'символов')
+    console.log('  Параметры input:', Object.keys(requestBody.input))
+    console.log('  Значение image (первые 100 символов):', requestBody.input.image ? requestBody.input.image.substring(0, 100) : 'ОТСУТСТВУЕТ')
     
     const response = await fetch(`${API_BASE_URL}/predictions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(requestBody)
+      body: requestBodyString
     })
 
     if (!response.ok) {

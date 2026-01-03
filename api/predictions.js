@@ -80,6 +80,14 @@ export default async function handler(req, res) {
     console.log('🔍 ПОЛУЧЕН ЗАПРОС НА СОЗДАНИЕ PREDICTION')
     console.log('  Model version:', body.version)
     console.log('  Input keys:', Object.keys(body.input || {}))
+    console.log('  Has image:', !!body.input?.image)
+    console.log('  Image value (first 100 chars):', body.input?.image ? body.input.image.substring(0, 100) : 'MISSING')
+    console.log('  Image is URL:', body.input?.image ? body.input.image.startsWith('http') : false)
+    console.log('  Image is Data URI:', body.input?.image ? body.input.image.startsWith('data:') : false)
+    console.log('  Full input:', JSON.stringify({
+      ...body.input,
+      image: body.input?.image ? (body.input.image.substring(0, 100) + '...') : 'MISSING'
+    }, null, 2))
     
     const response = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
