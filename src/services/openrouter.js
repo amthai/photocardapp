@@ -44,13 +44,25 @@ async function uploadImageToReplicate(photoFile) {
   console.log('  URL изображения:', data.url || data.urls?.get)
   
   // Replicate Files API возвращает объект с полем url или urls.get
-  const imageUrl = data.url || data.urls?.get
+  // Также может быть в формате https://replicate.delivery/pbxt/...
+  let imageUrl = data.url || data.urls?.get || data.urls?.get || data
   
-  if (!imageUrl) {
+  // Если это объект с полем url внутри
+  if (typeof imageUrl === 'object' && imageUrl.url) {
+    imageUrl = imageUrl.url
+  }
+  
+  // Если это строка, но не начинается с http, добавляем https://replicate.delivery
+  if (typeof imageUrl === 'string' && !imageUrl.startsWith('http')) {
+    imageUrl = `https://replicate.delivery/${imageUrl}`
+  }
+  
+  if (!imageUrl || typeof imageUrl !== 'string') {
     console.error('❌ URL изображения не получен. Полный ответ:', JSON.stringify(data, null, 2))
     throw new Error('URL изображения не получен от Replicate. Проверьте логи сервера.')
   }
   
+  console.log('✅ Финальный URL изображения:', imageUrl)
   return imageUrl
 }
 
@@ -126,9 +138,9 @@ async function waitForPrediction(predictionId) {
 export async function generateCard(photoFile, style) {
   try {
     // Формируем промпт с учетом стиля
-    // Для image-to-image промпт должен описывать только изменения фона/стиля
-    // Модель автоматически использует человека из исходного изображения
-    const fullPrompt = style.prompt
+    // Для image-to-image промпт должен явно указывать на сохранение лица/человека из исходного изображения
+    // Добавляем инструкции по сохранению лица в начало промпта
+    const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${style.prompt} The person from the original photo should remain unchanged, only the background and style should change.`
     
     console.log('📝 ПРОМПТ ДЛЯ ГЕНЕРАЦИИ:')
     console.log('  Стиль:', style.name)
@@ -210,18 +222,21 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
       }
       console.log('✅ Используем Flux Pro - точно поддерживает image-to-image')
     } else if (modelVersion.includes('nano-banana')) {
-      // Nano Banana поддерживает image-to-image через параметр image
+      // Nano Banana поддерживает image-to-image
+      // Пробуем оба варианта: image и init_image (в зависимости от версии модели)
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
           image: imageInput, // URL или Data URI изображения
+          init_image: imageInput, // Дублируем для совместимости с разными версиями
           num_outputs: 1,
           aspect_ratio: '1:1',
-          strength: 0.95 // Высокое значение для максимального сохранения исходного изображения
+          strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
+          guidance_scale: 7.5 // Умеренное значение для баланса между промптом и исходным изображением
         }
       }
-      console.log('✅ Используем nano-banana с параметром image')
+      console.log('✅ Используем nano-banana с параметрами image и init_image')
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
@@ -239,7 +254,8 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
           prompt: fullPrompt,
           image: imageInput,
           num_outputs: 1,
-          strength: 0.95,
+          strength: 0.98, // Высокое значение для сохранения исходного изображения
+          guidance_scale: 7.5,
           seed: null
         }
       }
