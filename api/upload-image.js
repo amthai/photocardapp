@@ -3,6 +3,8 @@ import FormData from 'form-data'
 import { Readable } from 'stream'
 import busboy from 'busboy'
 
+// Для Vercel serverless functions
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true)
@@ -80,34 +82,43 @@ export default async function handler(req, res) {
         reject(err)
       })
 
-      // На Vercel с bodyParser: false req должен быть stream
-      // Пробуем использовать req как stream напрямую
-      if (req.readable && typeof req.pipe === 'function') {
-        console.log('📤 Используем req.pipe() напрямую')
-        req.pipe(bb)
-      } else if (req.on && typeof req.on === 'function') {
-        // Если req не stream, но есть события, собираем данные
-        console.log('📤 Собираем данные через события req')
-        const chunks = []
-        req.on('data', (chunk) => {
-          chunks.push(chunk)
-        })
-        req.on('end', () => {
-          const rawBody = Buffer.concat(chunks)
-          console.log('📤 Получен raw body, размер:', rawBody.length)
-          const stream = new Readable()
-          stream.push(rawBody)
-          stream.push(null)
-          stream.pipe(bb)
-        })
-        req.on('error', reject)
-        return // Не вызываем resolve здесь, ждем 'end'
-      } else {
-        console.error('❌ req не является stream и не поддерживает события')
-        console.error('  req.readable:', req.readable)
-        console.error('  req.pipe:', typeof req.pipe)
-        console.error('  req.on:', typeof req.on)
-        reject(new Error('Request не поддерживает stream или события'))
+      // На Vercel req должен быть stream для multipart/form-data
+      // Пробуем использовать req как stream
+      try {
+        if (req.readable && typeof req.pipe === 'function') {
+          console.log('📤 Используем req.pipe() напрямую')
+          req.pipe(bb)
+        } else if (req.on && typeof req.on === 'function') {
+          // Если req не stream, но есть события, собираем данные
+          console.log('📤 Собираем данные через события req')
+          const chunks = []
+          req.on('data', (chunk) => {
+            chunks.push(chunk)
+          })
+          req.on('end', () => {
+            try {
+              const rawBody = Buffer.concat(chunks)
+              console.log('📤 Получен raw body, размер:', rawBody.length)
+              const stream = new Readable()
+              stream.push(rawBody)
+              stream.push(null)
+              stream.pipe(bb)
+            } catch (err) {
+              reject(err)
+            }
+          })
+          req.on('error', reject)
+          return // Не вызываем resolve здесь, ждем 'end'
+        } else {
+          console.error('❌ req не является stream и не поддерживает события')
+          console.error('  req.readable:', req.readable)
+          console.error('  req.pipe:', typeof req.pipe)
+          console.error('  req.on:', typeof req.on)
+          reject(new Error('Request не поддерживает stream или события'))
+        }
+      } catch (err) {
+        console.error('❌ Ошибка при обработке req:', err)
+        reject(err)
       }
     })
 

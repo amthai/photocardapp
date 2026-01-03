@@ -11,9 +11,6 @@
     "api/**/*.js": {
       "maxDuration": 60
     }
-  },
-  "api": {
-    "bodyParser": false
   }
 }
 
