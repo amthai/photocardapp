@@ -179,25 +179,60 @@ export async function generateCard(photoFile, style) {
       }
     } catch (uploadError) {
       console.warn('⚠️ Загрузка в Replicate Files API не работает:', uploadError.message)
-      console.warn('⚠️ Используем Data URI как fallback')
+      console.warn('⚠️ Пробуем альтернативный способ загрузки...')
       
-      // Fallback: конвертируем в Data URI
-      const reader = new FileReader()
-      imageInput = await new Promise((resolve, reject) => {
-        reader.onloadend = () => {
-          const result = reader.result
-          if (!result || !result.startsWith('data:image/')) {
-            reject(new Error('Не удалось конвертировать изображение в Data URI'))
+      // Пробуем загрузить напрямую через fetch с правильным Content-Type
+      try {
+        const directFormData = new FormData()
+        directFormData.append('file', photoFile)
+        
+        const REPLICATE_API_KEY = import.meta.env.VITE_REPLICATE_API_KEY
+        if (REPLICATE_API_KEY) {
+          const directResponse = await fetch('https://api.replicate.com/v1/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Token ${REPLICATE_API_KEY}`
+            },
+            body: directFormData
+          })
+          
+          if (directResponse.ok) {
+            const directData = await directResponse.json()
+            imageInput = directData.url || directData.urls?.get
+            if (imageInput && imageInput.startsWith('http')) {
+              console.log('✅ Изображение загружено напрямую в Replicate Files API')
+              console.log('  URL:', imageInput)
+            } else {
+              throw new Error('Невалидный URL от Replicate')
+            }
           } else {
-            resolve(result)
+            throw new Error(`Direct upload failed: ${directResponse.status}`)
           }
+        } else {
+          throw new Error('API ключ не найден для прямой загрузки')
         }
-        reader.onerror = () => reject(new Error('Ошибка чтения файла'))
-        reader.readAsDataURL(photoFile)
-      })
-      console.log('✅ Изображение конвертировано в Data URI')
-      console.log('  Длина:', imageInput.length, 'символов')
-      console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
+      } catch (directError) {
+        console.warn('⚠️ Прямая загрузка не работает:', directError.message)
+        console.warn('⚠️ Используем Data URI как последний fallback')
+        
+        // Fallback: конвертируем в Data URI
+        const reader = new FileReader()
+        imageInput = await new Promise((resolve, reject) => {
+          reader.onloadend = () => {
+            const result = reader.result
+            if (!result || !result.startsWith('data:image/')) {
+              reject(new Error('Не удалось конвертировать изображение в Data URI'))
+            } else {
+              resolve(result)
+            }
+          }
+          reader.onerror = () => reject(new Error('Ошибка чтения файла'))
+          reader.readAsDataURL(photoFile)
+        })
+        console.log('✅ Изображение конвертировано в Data URI')
+        console.log('  Длина:', imageInput.length, 'символов')
+        console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
+      }
     }
     
     // Финальная проверка, что изображение есть
@@ -263,13 +298,27 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
       console.log('✅ Используем Flux Pro - точно поддерживает image-to-image')
     } else if (modelVersion.includes('nano-banana')) {
       // Nano Banana поддерживает image-to-image
-      // Пробуем оба варианта: image и init_image (в зависимости от версии модели)
+      // Если это Data URI, пробуем извлечь base64 и использовать оба формата
+      let imageParam = imageInput
+      let initImageParam = imageInput
+      
+      // Если это Data URI, извлекаем base64 часть для некоторых моделей
+      if (imageInput.startsWith('data:image/')) {
+        const base64Match = imageInput.match(/^data:image\/[^;]+;base64,(.+)$/)
+        if (base64Match) {
+          const base64Data = base64Match[1]
+          console.log('📝 Извлечен base64 из Data URI, длина:', base64Data.length)
+          // Некоторые модели могут требовать base64 без префикса
+          initImageParam = base64Data
+        }
+      }
+      
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageInput, // URL или Data URI изображения
-          init_image: imageInput, // Дублируем для совместимости с разными версиями
+          image: imageParam, // URL или Data URI изображения
+          init_image: initImageParam, // Пробуем base64 без префикса
           num_outputs: 1,
           aspect_ratio: '1:1',
           strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
@@ -277,6 +326,8 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
         }
       }
       console.log('✅ Используем nano-banana с параметрами image и init_image')
+      console.log('  image тип:', typeof imageParam, 'длина:', imageParam.length)
+      console.log('  init_image тип:', typeof initImageParam, 'длина:', initImageParam.length)
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
