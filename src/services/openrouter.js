@@ -343,32 +343,29 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
       }
       console.log('✅ Используем Flux Pro - точно поддерживает image-to-image')
     } else if (modelVersion.includes('nano-banana')) {
-      // Nano Banana: пробуем image-to-image с init_image + reference_image
-      // Передаем и image, и init_image одинаково, чтобы принудить модель использовать входное фото
+      // Nano Banana: используем image + reference_image
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageInput,        // URL изображения пользователя
-          init_image: imageInput,   // дублируем в init_image для совместимости
+          image: imageInput,            // URL изображения пользователя
           num_outputs: 1,
           aspect_ratio: '1:1',
-          strength: 0.9,            // чуть ниже, чтобы дать место стилю, но сохранить лицо
-          guidance_scale: 8.0       // слегка повышаем, чтобы промпт и референс сильнее влияли
+          strength: 0.8,                // баланс между сохранением лица и влиянием стиля
+          guidance_scale: 7.5
         }
       }
       
-      // Добавляем референс как reference_image и control_image (некоторые модели используют control_image)
+      // Добавляем референс как reference_image (самый понятный параметр для стиля)
       if (referenceImageUrl) {
         requestBody.input.reference_image = referenceImageUrl
-        requestBody.input.control_image = referenceImageUrl
-        console.log('✅ Референс добавлен как reference_image и control_image')
+        console.log('✅ Референс добавлен как reference_image')
       }
       
-      console.log('✅ Используем nano-banana с image, init_image и reference/control image')
+      console.log('✅ Используем nano-banana с image и reference_image')
       console.log('  image URL:', imageInput.substring(0, 120))
       if (referenceImageUrl) {
-        console.log('  reference/control URL:', referenceImageUrl.substring(0, 120))
+        console.log('  reference_image URL:', referenceImageUrl.substring(0, 120))
       }
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
