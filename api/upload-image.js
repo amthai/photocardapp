@@ -186,18 +186,47 @@ export default async function handler(req, res) {
       return res.status(response.status).json(errorData)
     }
 
-    const data = await response.json()
+    let data
+    try {
+      const responseText = await response.text()
+      console.log('📄 Ответ Replicate API (текст):', responseText.substring(0, 500))
+      data = responseText ? JSON.parse(responseText) : null
+    } catch (e) {
+      console.error('❌ Ошибка парсинга ответа Replicate:', e)
+      return res.status(500).json({ error: 'Ошибка парсинга ответа Replicate API' })
+    }
+    
     console.log('✅ Файл успешно загружен в Replicate Files API')
     console.log('  Полный ответ:', JSON.stringify(data, null, 2))
     
     // Replicate Files API возвращает объект с полем url
     // Формат: { id: "...", url: "https://replicate.delivery/..." }
-    const fileUrl = data.url || data.urls?.get
+    // Или может быть: { id: "...", urls: { get: "https://..." } }
+    let fileUrl = null
+    
+    if (data.url) {
+      fileUrl = data.url
+    } else if (data.urls) {
+      if (typeof data.urls.get === 'string') {
+        fileUrl = data.urls.get
+      } else if (typeof data.urls.get === 'function') {
+        // Это маловероятно, но на всякий случай
+        fileUrl = data.urls.get()
+      }
+    } else if (typeof data === 'string') {
+      fileUrl = data
+    }
     
     if (!fileUrl) {
       console.error('❌ URL не получен от Replicate')
       console.error('  Полный ответ:', JSON.stringify(data, null, 2))
       return res.status(500).json({ error: 'URL не получен от Replicate API', detail: data })
+    }
+    
+    // Проверяем, что URL валидный
+    if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+      console.error('❌ Получен невалидный URL:', fileUrl)
+      return res.status(500).json({ error: 'Получен невалидный URL от Replicate API', detail: { url: fileUrl, fullResponse: data } })
     }
     
     console.log('✅ URL файла:', fileUrl)

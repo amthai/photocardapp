@@ -109,18 +109,20 @@ async function uploadImageToReplicate(photoFile) {
     imageUrl = imageUrl.url
   }
   
-  // Если это строка, но не начинается с http или data:, добавляем https://replicate.delivery
-  // НО только если это не Data URI (который начинается с data:)
-  if (typeof imageUrl === 'string' && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
-    imageUrl = `https://replicate.delivery/${imageUrl}`
-  }
-  
+  // Replicate Files API возвращает полный URL, начинающийся с https://
+  // Не нужно добавлять префикс replicate.delivery
   if (!imageUrl || typeof imageUrl !== 'string') {
     console.error('❌ URL изображения не получен. Полный ответ:', JSON.stringify(data, null, 2))
     throw new Error('URL изображения не получен от Replicate. Проверьте логи сервера.')
   }
   
-  console.log('✅ Финальный URL/Data URI изображения:', imageUrl.substring(0, 100) + (imageUrl.length > 100 ? '...' : ''))
+  // Проверяем, что это валидный URL
+  if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+    console.error('❌ Получен невалидный URL:', imageUrl)
+    throw new Error('Получен невалидный URL от Replicate Files API')
+  }
+  
+  console.log('✅ Финальный URL изображения:', imageUrl)
   return imageUrl
 }
 
