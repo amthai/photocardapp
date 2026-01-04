@@ -266,13 +266,6 @@ export async function generateCard(photoFile, style) {
 async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, style) {
     // Используем модель из переменной окружения (по умолчанию Nano Banana)
     let modelVersion = REPLICATE_MODEL
-
-    // Flux 1.1 Pro сейчас игнорирует image-to-image в нашем пайплайне → принудительно fallback на nano-banana,
-    // чтобы гарантировать img2img c сохранением лица и reference_image.
-    if (modelVersion.includes('flux')) {
-      console.warn('⚠️ Flux img2img даёт рандом: переключаемся на google/nano-banana')
-      modelVersion = 'google/nano-banana'
-    }
     
     console.log('Используем Replicate с моделью:', modelVersion)
     console.log('Промпт:', fullPrompt.substring(0, 100) + '...')
