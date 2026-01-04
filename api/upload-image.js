@@ -1,6 +1,7 @@
 import FormData from 'form-data'
 import { Readable } from 'stream'
 import busboy from 'busboy'
+import { Readable as StreamReadable } from 'stream'
 
 // Для Vercel serverless functions
 
@@ -29,10 +30,14 @@ export default async function handler(req, res) {
 
     console.log('📥 Получен запрос на загрузку изображения')
     console.log('  Content-Type:', req.headers['content-type'])
+    console.log('  req.readable:', req.readable)
+    console.log('  req.pipe:', typeof req.pipe)
+    console.log('  req.on:', typeof req.on)
 
     let fileBuffer = null
     let filename = 'photo.jpg'
     let contentType = 'image/jpeg'
+    let fileReceived = false
 
     // Используем busboy для парсинга multipart/form-data на Vercel
     const bb = busboy({ 
@@ -43,8 +48,11 @@ export default async function handler(req, res) {
     })
 
     await new Promise((resolve, reject) => {
+      let hasError = false
+
       bb.on('file', (name, file, info) => {
         console.log('📁 Получен файл:', name, 'filename:', info.filename, 'mimeType:', info.mimeType)
+        fileReceived = true
         
         if (name === 'image') {
           filename = info.filename || 'photo.jpg'
@@ -53,13 +61,15 @@ export default async function handler(req, res) {
           const chunks = []
           file.on('data', (chunk) => {
             chunks.push(chunk)
+            console.log('  Получен chunk, размер:', chunk.length, 'байт, всего chunks:', chunks.length)
           })
           file.on('end', () => {
             fileBuffer = Buffer.concat(chunks)
-            console.log('✅ Файл прочитан, размер:', fileBuffer.length, 'байт')
+            console.log('✅ Файл прочитан полностью, размер:', fileBuffer.length, 'байт')
           })
           file.on('error', (err) => {
             console.error('❌ Ошибка чтения файла:', err)
+            hasError = true
             reject(err)
           })
         } else {
@@ -68,31 +78,43 @@ export default async function handler(req, res) {
       })
 
       bb.on('finish', () => {
-        console.log('✅ Busboy finish, fileBuffer:', !!fileBuffer, 'размер:', fileBuffer?.length)
-        resolve()
+        if (!hasError) {
+          console.log('✅ Busboy finish, fileReceived:', fileReceived, 'fileBuffer:', !!fileBuffer, 'размер:', fileBuffer?.length)
+          if (!fileBuffer) {
+            reject(new Error('Файл не был получен'))
+            return
+          }
+          resolve()
+        }
       })
 
       bb.on('error', (err) => {
         console.error('❌ Busboy error:', err)
+        hasError = true
         reject(err)
       })
 
       // На Vercel req должен быть stream
-      // Пробуем разные способы подключения
-      if (req.pipe && typeof req.pipe === 'function') {
+      if (req.pipe && typeof req.pipe === 'function' && req.readable !== false) {
         console.log('📤 Используем req.pipe()')
         req.pipe(bb)
       } else if (req.on && typeof req.on === 'function') {
-        console.log('📤 Используем req.on() события')
+        console.log('📤 Используем req.on() события для сбора данных')
+        const chunks = []
         req.on('data', (chunk) => {
-          bb.write(chunk)
+          chunks.push(chunk)
         })
         req.on('end', () => {
-          bb.end()
+          console.log('📤 Собрано chunks:', chunks.length, 'общий размер:', chunks.reduce((sum, c) => sum + c.length, 0))
+          const stream = new StreamReadable()
+          chunks.forEach(chunk => stream.push(chunk))
+          stream.push(null)
+          stream.pipe(bb)
         })
         req.on('error', reject)
       } else {
         console.error('❌ req не поддерживает stream операции')
+        console.error('  req type:', typeof req)
         reject(new Error('Request не поддерживает stream'))
       }
     })
