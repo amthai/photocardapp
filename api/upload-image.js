@@ -1,9 +1,9 @@
-import FormData from 'form-data'
-import { Readable } from 'stream'
+import { put } from '@vercel/blob'
 import busboy from 'busboy'
 import { Readable as StreamReadable } from 'stream'
 
 // Для Vercel serverless functions
+// Используем Vercel Blob Storage вместо Replicate Files API
 
 export default async function handler(req, res) {
   // CORS headers
@@ -22,11 +22,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY || process.env.VITE_REPLICATE_API_KEY
-
-    if (!REPLICATE_API_KEY) {
-      return res.status(500).json({ error: 'API ключ не настроен' })
-    }
 
     console.log('📥 Получен запрос на загрузку изображения')
     console.log('  Content-Type:', req.headers['content-type'])
@@ -126,111 +121,42 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Файл пустой', detail: 'Empty file buffer' })
     }
 
-    // Загружаем в Replicate Files API
-    // Replicate больше не поддерживает Data URI, нужны URL
-    console.log('📤 Загружаем файл в Replicate Files API...')
+    // Загружаем в Vercel Blob Storage
+    // Это намного проще и надежнее, чем Replicate Files API
+    console.log('📤 Загружаем файл в Vercel Blob Storage...')
     console.log('  Buffer размер:', fileBuffer.length, 'байт')
     console.log('  Filename:', filename)
     console.log('  ContentType:', contentType)
 
-    const formData = new FormData()
-
-    // Создаем Readable stream из Buffer
-    // Важно: используем правильный способ создания stream
-    const bufferStream = new Readable({
-      read() {
-        this.push(fileBuffer)
-        this.push(null) // Завершаем stream
-      }
-    })
-
-    // Добавляем stream в form-data
-    formData.append('file', bufferStream, {
-      filename: filename,
-      contentType: contentType,
-      knownLength: fileBuffer.length
-    })
-
-    console.log('✅ Stream создан и добавлен в form-data')
-
-    const headers = {
-      'Authorization': `Token ${REPLICATE_API_KEY}`,
-      ...formData.getHeaders()
-    }
-
-    console.log('  Content-Type:', headers['content-type']?.substring(0, 100))
-
-    // Используем node-fetch
-    const nodeFetch = await import('node-fetch')
-    const fetchFn = nodeFetch.default
-
-    console.log('Отправляем запрос в Replicate API...')
-
-    const response = await fetchFn('https://api.replicate.com/v1/files', {
-      method: 'POST',
-      headers: headers,
-      body: formData
-    })
-
-    console.log('Ответ Replicate API получен, статус:', response.status)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('❌ Ошибка Replicate API:', response.status, errorText)
-      let errorData
-      try {
-        errorData = JSON.parse(errorText)
-      } catch {
-        errorData = { error: errorText }
-      }
-      return res.status(response.status).json(errorData)
-    }
-
-    let data
     try {
-      const responseText = await response.text()
-      console.log('📄 Ответ Replicate API (текст):', responseText.substring(0, 500))
-      data = responseText ? JSON.parse(responseText) : null
-    } catch (e) {
-      console.error('❌ Ошибка парсинга ответа Replicate:', e)
-      return res.status(500).json({ error: 'Ошибка парсинга ответа Replicate API' })
-    }
-    
-    console.log('✅ Файл успешно загружен в Replicate Files API')
-    console.log('  Полный ответ:', JSON.stringify(data, null, 2))
-    
-    // Replicate Files API возвращает объект с полем url
-    // Формат: { id: "...", url: "https://replicate.delivery/..." }
-    // Или может быть: { id: "...", urls: { get: "https://..." } }
-    let fileUrl = null
-    
-    if (data.url) {
-      fileUrl = data.url
-    } else if (data.urls) {
-      if (typeof data.urls.get === 'string') {
-        fileUrl = data.urls.get
-      } else if (typeof data.urls.get === 'function') {
-        // Это маловероятно, но на всякий случай
-        fileUrl = data.urls.get()
+      // Генерируем уникальное имя файла
+      const timestamp = Date.now()
+      const randomId = Math.random().toString(36).substring(2, 15)
+      const extension = filename.split('.').pop() || 'jpg'
+      const blobName = `images/${timestamp}-${randomId}.${extension}`
+
+      // Загружаем в Vercel Blob
+      const blob = await put(blobName, fileBuffer, {
+        contentType: contentType,
+        access: 'public', // Публичный доступ для Replicate
+        addRandomSuffix: false // Уже добавили случайный ID
+      })
+
+      console.log('✅ Файл успешно загружен в Vercel Blob Storage')
+      console.log('  URL:', blob.url)
+      
+      if (!blob.url || !blob.url.startsWith('http')) {
+        throw new Error('Получен невалидный URL от Vercel Blob')
       }
-    } else if (typeof data === 'string') {
-      fileUrl = data
+
+      return res.json({ url: blob.url })
+    } catch (blobError) {
+      console.error('❌ Ошибка загрузки в Vercel Blob:', blobError)
+      return res.status(500).json({ 
+        error: 'Ошибка загрузки в Vercel Blob Storage', 
+        detail: blobError.message 
+      })
     }
-    
-    if (!fileUrl) {
-      console.error('❌ URL не получен от Replicate')
-      console.error('  Полный ответ:', JSON.stringify(data, null, 2))
-      return res.status(500).json({ error: 'URL не получен от Replicate API', detail: data })
-    }
-    
-    // Проверяем, что URL валидный
-    if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
-      console.error('❌ Получен невалидный URL:', fileUrl)
-      return res.status(500).json({ error: 'Получен невалидный URL от Replicate API', detail: { url: fileUrl, fullResponse: data } })
-    }
-    
-    console.log('✅ URL файла:', fileUrl)
-    return res.json({ url: fileUrl })
 
   } catch (error) {
     console.error('Upload error:', error)
