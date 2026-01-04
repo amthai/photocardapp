@@ -276,25 +276,26 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
     // Формируем запрос в зависимости от модели
     let requestBody
     
-  if (modelVersion.includes('flux')) {
-      // Flux Pro: используем image-to-image + reference_image (если есть)
+    if (modelVersion.includes('flux')) {
+      // Flux Pro: используем только user image + промпт (reference вкладываем в текст)
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageInput,             // URL изображения пользователя
-          reference_image: referenceImageUrl || undefined, // даём модели явный реф для стиля
+          image: imageInput,            // URL изображения пользователя
           num_outputs: 1,
           aspect_ratio: '1:1',
           output_format: 'png',
           output_quality: 90,
-          strength: 0.45,                // ниже, чтобы сохранять лицо/композицию
-          guidance_scale: 7.0            // умеренный вес промпта
+          strength: 0.72,               // ниже, чтобы стиль из промпта сильнее влиял
+          guidance_scale: 8.0           // усиливаем промпт
         }
       }
-      console.log('✅ Flux Pro: image + optional reference_image')
+      console.log('✅ Flux Pro: image-only + prompt (reference через текст)')
       console.log('  image URL:', imageInput)
-      console.log('  reference_image:', referenceImageUrl || 'Отсутствует')
+      if (referenceImageUrl) {
+        console.log('  reference URL (использован только в тексте промпта):', referenceImageUrl)
+      }
     } else if (modelVersion.includes('nano-banana')) {
       // Nano Banana: используем image + reference_image
       requestBody = {
