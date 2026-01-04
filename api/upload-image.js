@@ -128,7 +128,12 @@ export default async function handler(req, res) {
 
     try {
       // Токен Vercel Blob Storage
-      const BLOB_READ_WRITE_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || 'blobs store_lbgUC3ZSH1uYZv3d'
+      // Формат токена: "blobs store_..." - используем как есть или только часть после "blobs "
+      const tokenFromEnv = process.env.BLOB_READ_WRITE_TOKEN || 'blobs store_lbgUC3ZSH1uYZv3d'
+      // Убираем префикс "blobs " если он есть (библиотека может добавить его сама)
+      const BLOB_READ_WRITE_TOKEN = tokenFromEnv.startsWith('blobs ') 
+        ? tokenFromEnv.substring(6) 
+        : tokenFromEnv
       
       // Генерируем уникальное имя файла
       const timestamp = Date.now()
