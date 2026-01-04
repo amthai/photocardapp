@@ -66,8 +66,9 @@ async function uploadImageToReplicate(photoFile) {
     imageUrl = imageUrl.url
   }
   
-  // Если это строка, но не начинается с http, добавляем https://replicate.delivery
-  if (typeof imageUrl === 'string' && !imageUrl.startsWith('http')) {
+  // Если это строка, но не начинается с http или data:, добавляем https://replicate.delivery
+  // НО только если это не Data URI (который начинается с data:)
+  if (typeof imageUrl === 'string' && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
     imageUrl = `https://replicate.delivery/${imageUrl}`
   }
   
@@ -76,7 +77,7 @@ async function uploadImageToReplicate(photoFile) {
     throw new Error('URL изображения не получен от Replicate. Проверьте логи сервера.')
   }
   
-  console.log('✅ Финальный URL изображения:', imageUrl)
+  console.log('✅ Финальный URL/Data URI изображения:', imageUrl.substring(0, 100) + (imageUrl.length > 100 ? '...' : ''))
   return imageUrl
 }
 
@@ -182,9 +183,12 @@ async function waitForPrediction(predictionId) {
 
 export async function generateCard(photoFile, style) {
   try {
-    // Формируем промпт с учетом стиля
-    // Используем промпт из стиля, который уже содержит все необходимые инструкции
-    const fullPrompt = style.prompt
+    // Формируем промпт с учетом стиля и референса
+    // Добавляем инструкции по использованию референса для стиля
+    let fullPrompt = style.prompt
+    if (style.referenceImage) {
+      fullPrompt = `${fullPrompt} Use the reference image as a style guide for the background, composition, colors, and overall aesthetic. Match the style and mood of the reference image while keeping the person from the input image unchanged.`
+    }
     
     console.log('📝 ПРОМПТ ДЛЯ ГЕНЕРАЦИИ:')
     console.log('  Стиль:', style.name)
@@ -250,9 +254,12 @@ export async function generateCard(photoFile, style) {
     console.log('🔍 ПРОВЕРКА ИЗОБРАЖЕНИЙ ПЕРЕД ОТПРАВКОЙ:')
     console.log('  Изображение пользователя присутствует:', !!imageInput)
     console.log('  Тип:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'НЕИЗВЕСТНО')
+    console.log('  Длина изображения пользователя:', imageInput.length, 'символов')
     console.log('  Референс присутствует:', !!referenceImageUrl)
     if (referenceImageUrl) {
-      console.log('  Референс URL:', referenceImageUrl)
+      console.log('  Референс тип:', referenceImageUrl.startsWith('http') ? 'URL' : referenceImageUrl.startsWith('data:') ? 'Data URI' : 'НЕИЗВЕСТНО')
+      console.log('  Референс длина:', referenceImageUrl.length, 'символов')
+      console.log('  Референс первые 100 символов:', referenceImageUrl.substring(0, 100))
     }
     
     // Используем Replicate с выбранной моделью (по умолчанию Nano Banana)
@@ -331,17 +338,29 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
           prompt: fullPrompt,
           image: imageParam, // URL или Data URI изображения пользователя
           init_image: initImageParam, // Пробуем base64 без префикса
-          reference_image: referenceImageUrl, // Референс изображение для стиля
           num_outputs: 1,
           aspect_ratio: '1:1',
           strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
           guidance_scale: 7.5 // Умеренное значение для баланса между промптом и исходным изображением
         }
       }
-      console.log('✅ Используем nano-banana с параметрами image, init_image и reference_image')
+      
+      // Пробуем добавить референс как control_image или reference_image
+      // Если модель поддерживает один из этих параметров
+      if (referenceImageUrl) {
+        // Пробуем control_image (более распространенный параметр для стиля)
+        requestBody.input.control_image = referenceImageUrl
+        // Также пробуем reference_image на случай, если модель поддерживает его
+        requestBody.input.reference_image = referenceImageUrl
+      }
+      
+      console.log('✅ Используем nano-banana с параметрами image, init_image')
+      if (referenceImageUrl) {
+        console.log('  control_image:', 'Присутствует')
+        console.log('  reference_image:', 'Присутствует')
+      }
       console.log('  image тип:', typeof imageParam, 'длина:', imageParam.length)
       console.log('  init_image тип:', typeof initImageParam, 'длина:', initImageParam.length)
-      console.log('  reference_image:', referenceImageUrl ? 'Присутствует' : 'Отсутствует')
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
