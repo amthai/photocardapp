@@ -302,7 +302,6 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
         input: {
           prompt: fullPrompt,
           image: imageInput,            // URL изображения пользователя
-          init_image: imageInput,       // ЯВНОЕ img2img — усиливаем сохранение лица
           num_outputs: 1,
           aspect_ratio: '1:1',
           strength: 0.8,                // баланс между сохранением лица и влиянием стиля
