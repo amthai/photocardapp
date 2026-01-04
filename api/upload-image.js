@@ -96,15 +96,21 @@ export default async function handler(req, res) {
     }
 
     console.log('Загружаем файл в Replicate Files API...')
+    console.log('  Buffer размер:', fileBuffer.length, 'байт')
+    console.log('  Buffer тип:', Buffer.isBuffer(fileBuffer) ? 'Buffer' : typeof fileBuffer)
+    console.log('  Filename:', filename)
+    console.log('  ContentType:', contentType)
     
     // Используем тот же подход, что в server.js - простой Readable stream из buffer
-    // Это работает надежно и не требует записи во временные файлы
     const formData = new FormData()
     
-    // Создаем Readable stream из Buffer - точно так же, как в server.js
+    // Создаем Readable stream из Buffer
     const bufferStream = new Readable()
     bufferStream.push(fileBuffer)
     bufferStream.push(null) // Завершаем stream
+    
+    console.log('  Stream создан, readable:', bufferStream.readable)
+    console.log('  Stream readableEnded:', bufferStream.readableEnded)
     
     // Добавляем stream в form-data
     formData.append('file', bufferStream, {
@@ -113,22 +119,22 @@ export default async function handler(req, res) {
       knownLength: fileBuffer.length
     })
     
-    console.log('✅ Stream создан из buffer, размер:', fileBuffer.length, 'байт')
-    console.log('  Buffer is Buffer:', Buffer.isBuffer(fileBuffer))
+    console.log('✅ Stream добавлен в form-data')
     
     const headers = {
       'Authorization': `Token ${REPLICATE_API_KEY}`,
       ...formData.getHeaders()
     }
     
-    console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
-    console.log('Content-Type:', headers['content-type']?.substring(0, 80))
+    console.log('  Headers получены')
+    console.log('  Content-Type:', headers['content-type']?.substring(0, 100))
+    console.log('  Authorization присутствует:', !!headers['Authorization'])
     
-    // Используем node-fetch явно, как в server.js
+    // Используем node-fetch явно
     const nodeFetch = await import('node-fetch')
     const fetchFn = nodeFetch.default
     
-    console.log('Используем node-fetch для загрузки файла')
+    console.log('Отправляем запрос в Replicate API...')
     
     const response = await fetchFn('https://api.replicate.com/v1/files', {
       method: 'POST',
@@ -136,7 +142,7 @@ export default async function handler(req, res) {
       body: formData
     })
     
-    console.log('Ответ Replicate API, статус:', response.status)
+    console.log('Ответ Replicate API получен, статус:', response.status)
     
     if (!response.ok) {
       const errorText = await response.text()
