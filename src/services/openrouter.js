@@ -8,6 +8,49 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
 // nano-banana поддерживает image-to-image
 const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'google/nano-banana'
 
+// Сжимает изображение для уменьшения размера Data URI
+// Максимальный размер: 1024x1024, качество: 0.8
+async function compressImage(file, maxSize = 1024, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        // Вычисляем новые размеры с сохранением пропорций
+        let width = img.width
+        let height = img.height
+        
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height * maxSize) / width
+            width = maxSize
+          } else {
+            width = (width * maxSize) / height
+            height = maxSize
+          }
+        }
+        
+        // Создаем canvas и рисуем сжатое изображение
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        
+        // Конвертируем в Data URI с сжатием
+        const dataUri = canvas.toDataURL('image/jpeg', quality)
+        console.log(`✅ Изображение сжато: ${img.width}x${img.height} → ${width}x${height}`)
+        console.log(`  Размер Data URI: ${(dataUri.length / 1024 / 1024).toFixed(2)} MB`)
+        resolve(dataUri)
+      }
+      img.onerror = () => reject(new Error('Ошибка загрузки изображения'))
+      img.src = e.target.result
+    }
+    reader.onerror = () => reject(new Error('Ошибка чтения файла'))
+    reader.readAsDataURL(file)
+  })
+}
+
 // Загружает изображение в Replicate Files API и возвращает URL
 async function uploadImageToReplicate(photoFile) {
   console.log('📤 Загружаем изображение в Replicate Files API...')
@@ -101,11 +144,18 @@ async function loadReferenceImage(referencePath) {
     
     console.log('✅ Референс загружен, размер:', file.size, 'байт')
     
-    // Загружаем в Replicate Files API
-    const referenceUrl = await uploadImageToReplicate(file)
-    console.log('✅ Референс загружен в Replicate, URL:', referenceUrl)
-    
-    return referenceUrl
+    // Пробуем загрузить в Replicate Files API
+    try {
+      const referenceUrl = await uploadImageToReplicate(file)
+      console.log('✅ Референс загружен в Replicate, URL:', referenceUrl)
+      return referenceUrl
+    } catch (uploadError) {
+      console.warn('⚠️ Загрузка референса в Replicate не работает, используем сжатый Data URI')
+      // Fallback: сжимаем и возвращаем Data URI
+      const compressedDataUri = await compressImage(file, 1024, 0.8)
+      console.log('✅ Референс сжат в Data URI, длина:', compressedDataUri.length)
+      return compressedDataUri
+    }
   } catch (error) {
     console.error('❌ Ошибка загрузки референса:', error)
     throw new Error(`Ошибка загрузки референса: ${error.message}`)
@@ -225,24 +275,14 @@ export async function generateCard(photoFile, style) {
       }
     } catch (uploadError) {
       console.warn('⚠️ Загрузка в Replicate Files API не работает:', uploadError.message)
-      console.warn('⚠️ Используем Data URI как fallback')
+      console.warn('⚠️ Используем сжатый Data URI как fallback')
       
-      // Fallback: конвертируем в Data URI
-      const reader = new FileReader()
-      imageInput = await new Promise((resolve, reject) => {
-        reader.onloadend = () => {
-          const result = reader.result
-          if (!result || !result.startsWith('data:image/')) {
-            reject(new Error('Не удалось конвертировать изображение в Data URI'))
-          } else {
-            resolve(result)
-          }
-        }
-        reader.onerror = () => reject(new Error('Ошибка чтения файла'))
-        reader.readAsDataURL(photoFile)
-      })
-      console.log('✅ Изображение конвертировано в Data URI')
+      // Fallback: сжимаем изображение перед конвертацией в Data URI
+      // Это уменьшит размер и поможет избежать ошибки 413 Payload Too Large
+      imageInput = await compressImage(photoFile, 1024, 0.8)
+      console.log('✅ Изображение сжато и конвертировано в Data URI')
       console.log('  Длина:', imageInput.length, 'символов')
+      console.log('  Размер в MB:', (imageInput.length / 1024 / 1024).toFixed(2))
       console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
     }
     
