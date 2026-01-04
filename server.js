@@ -1,12 +1,12 @@
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
-import FormData from 'form-data'
 import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { writeFile, unlink } from 'fs/promises'
 import { randomUUID } from 'crypto'
+import { put } from '@vercel/blob'
 
 dotenv.config()
 
@@ -106,10 +106,6 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
     console.log('Request file:', req.file ? `Размер: ${req.file.size}, Тип: ${req.file.mimetype}, Имя: ${req.file.originalname}` : 'НЕТ ФАЙЛА')
     console.log('Request files:', req.files)
     
-    if (!REPLICATE_API_KEY) {
-      return res.status(500).json({ error: 'API ключ не настроен' })
-    }
-
     if (!req.file) {
       console.error('Файл не получен. Проверьте, что поле называется "image"')
       console.error('Headers:', JSON.stringify(req.headers, null, 2))
@@ -124,74 +120,34 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
       })
     }
 
-    console.log('Загружаем файл в Replicate Files API...')
-    
-    // Используем form-data пакет для Node.js
-    const formData = new FormData()
-    
-    // Создаем Readable stream из Buffer - это правильный способ для form-data
-    const { Readable } = await import('stream')
-    const bufferStream = new Readable()
-    bufferStream.push(req.file.buffer)
-    bufferStream.push(null) // Завершаем stream
-    
-    // Добавляем stream в form-data
-    formData.append('file', bufferStream, {
-      filename: req.file.originalname || 'photo.jpg',
-      contentType: req.file.mimetype || 'image/jpeg',
-      knownLength: req.file.buffer.length
-    })
-
-    console.log('Отправляем в Replicate Files API, размер файла:', req.file.buffer.length, 'байт')
-    
-    // Получаем заголовки от form-data (включая boundary)
-    const headers = {
-      'Authorization': `Token ${REPLICATE_API_KEY}`,
-      ...formData.getHeaders()
-    }
-    
-    console.log('Content-Type:', headers['content-type']?.substring(0, 80))
-    console.log('Buffer isBuffer:', Buffer.isBuffer(req.file.buffer))
-    console.log('FormData boundaries:', Object.keys(headers))
-    
-    // ВАЖНО: используем node-fetch явно
-    const nodeFetch = await import('node-fetch')
-    const fetchFn = nodeFetch.default
-    
-    console.log('Используем node-fetch для загрузки файла')
-    
-    const response = await fetchFn('https://api.replicate.com/v1/files', {
-      method: 'POST',
-      headers: headers,
-      body: formData
-    })
-    
-    console.log('Ответ Replicate API, статус:', response.status)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Ошибка Replicate API:', response.status, errorText)
-      let errorData
-      try {
-        errorData = JSON.parse(errorText)
-      } catch {
-        errorData = { error: errorText }
-      }
-      return res.status(response.status).json(errorData)
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_RW_TOKEN || process.env.BLOB_RW_TOKEN
+    if (!blobToken) {
+      return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN не настроен' })
     }
 
-    const data = await response.json()
-    console.log('✅ Файл успешно загружен в Replicate Files API')
-    console.log('  ID:', data.id)
-    console.log('  URL:', data.url || data.urls?.get)
-    console.log('  Полный ответ:', JSON.stringify(data, null, 2))
-    
-    // Replicate Files API возвращает объект с полями: id, url или urls.get
-    if (!data.url && !data.urls?.get) {
-      console.error('❌ ВНИМАНИЕ: Replicate не вернул URL файла. Ответ:', data)
+    const ext = (req.file.originalname?.split('.').pop() || 'jpg').replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+    const blobName = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+
+    console.log('Загружаем файл в Vercel Blob (public)...')
+    console.log('  Размер файла:', req.file.buffer.length, 'байт')
+    console.log('  Контент-тайп:', req.file.mimetype)
+    console.log('  Имя файла:', blobName)
+
+    try {
+      const blob = await put(blobName, req.file.buffer, {
+        access: 'public',
+        contentType: req.file.mimetype || 'image/jpeg',
+        addRandomSuffix: false,
+        token: blobToken
+      })
+
+      console.log('✅ Файл успешно загружен в Blob')
+      console.log('  URL:', blob.url)
+      res.json({ url: blob.url })
+    } catch (uploadErr) {
+      console.error('❌ Ошибка загрузки в Blob:', uploadErr)
+      res.status(500).json({ error: 'Ошибка загрузки в Blob', detail: uploadErr.message })
     }
-    
-    res.json(data)
   } catch (error) {
     console.error('Upload error:', error)
     res.status(500).json({ error: error.message })
