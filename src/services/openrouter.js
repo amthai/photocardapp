@@ -296,6 +296,24 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
       console.log('✅ Flux Pro: image + init_image + optional reference_image')
       console.log('  image URL:', imageInput)
       console.log('  reference_image:', referenceImageUrl || 'Отсутствует')
+    } else if (modelVersion.includes('stable-diffusion')) {
+      // Stable Diffusion 3.5 image-to-image
+      requestBody = {
+        version: modelVersion,
+        input: {
+          prompt: fullPrompt,
+          image: imageInput,             // URL изображения пользователя
+          strength: 0.65,                // баланс: сохраним лицо, но применим стиль
+          guidance_scale: 7.5,
+          width: 1024,
+          height: 1024,
+          output_format: 'png',
+          output_quality: 90
+        }
+      }
+      console.log('✅ SD 3.5: image-to-image')
+      console.log('  image URL:', imageInput)
+      console.log('  reference_image (не используется):', referenceImageUrl ? 'есть' : 'нет')
     } else if (modelVersion.includes('nano-banana')) {
       // Nano Banana: используем image + reference_image
       requestBody = {
