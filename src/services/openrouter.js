@@ -187,17 +187,10 @@ async function waitForPrediction(predictionId) {
 
 export async function generateCard(photoFile, style) {
   try {
-<<<<<<< HEAD
     // Формируем промпт с учетом стиля
     // Для image-to-image промпт должен явно указывать на сохранение лица/человека из исходного изображения
     // Добавляем инструкции по сохранению лица в начало промпта
     const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${style.prompt} The person from the original photo should remain unchanged, only the background and style should change. Use the reference image as a style guide for the background and overall composition.`
-=======
-    // Формируем промпт с учетом стиля
-    // Для image-to-image промпт должен явно указывать на сохранение лица/человека из исходного изображения
-    // Добавляем инструкции по сохранению лица в начало промпта
-    const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${style.prompt} The person from the original photo should remain unchanged, only the background and style should change. Use the reference image as a style guide for the background and overall composition.`
->>>>>>> parent of e5760da (Упрощен промпт: используется только новый промпт из стиля без дополнительных английских инструкций)
     
     console.log('📝 ПРОМПТ ДЛЯ ГЕНЕРАЦИИ:')
     console.log('  Стиль:', style.name)
