@@ -126,77 +126,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Файл пустой', detail: 'Empty file buffer' })
     }
 
-    console.log('Загружаем файл в Replicate Files API...')
-    console.log('  Buffer размер:', fileBuffer.length, 'байт')
-    console.log('  Filename:', filename)
-    console.log('  ContentType:', contentType)
-    
-    const formData = new FormData()
-    
-    // Создаем Readable stream из Buffer - это должно работать надежно
-    const bufferStream = new Readable()
-    bufferStream.push(fileBuffer)
-    bufferStream.push(null) // Завершаем stream
-    
-    // Добавляем stream в form-data
-    formData.append('file', bufferStream, {
-      filename: filename,
-      contentType: contentType,
-      knownLength: fileBuffer.length
-    })
-    
-    console.log('✅ Stream создан и добавлен в form-data')
-    console.log('  Stream readable:', bufferStream.readable)
-    console.log('  Stream readableEnded:', bufferStream.readableEnded)
-    
-    const headers = {
-      'Authorization': `Token ${REPLICATE_API_KEY}`,
-      ...formData.getHeaders()
-    }
-    
-    console.log('  Headers созданы')
-    console.log('  Content-Type:', headers['content-type']?.substring(0, 150))
-    console.log('  Authorization присутствует:', !!headers['Authorization'])
-    console.log('  Content-Length в headers:', headers['content-length'])
-    
-    // Используем node-fetch явно
-    const nodeFetch = await import('node-fetch')
-    const fetchFn = nodeFetch.default
-    
-    console.log('Отправляем запрос в Replicate API...')
-    console.log('  URL: https://api.replicate.com/v1/files')
-    console.log('  Method: POST')
-    
-    const response = await fetchFn('https://api.replicate.com/v1/files', {
-      method: 'POST',
-      headers: headers,
-      body: formData
-    })
-    
-    console.log('Ответ Replicate API получен')
-    console.log('  Статус:', response.status)
-    console.log('  StatusText:', response.statusText)
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Ошибка Replicate API:', response.status, errorText)
-      let errorData
-      try {
-        errorData = JSON.parse(errorText)
-      } catch {
-        errorData = { error: errorText }
-      }
-      return res.status(response.status).json(errorData)
-    }
-
-    const data = await response.json()
-    console.log('✅ Файл успешно загружен в Replicate Files API')
-    console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
-    console.log('  data.url:', data.url)
-    console.log('  data.urls:', data.urls)
-    console.log('  data.urls?.get:', data.urls?.get)
-    
-    return res.json(data)
+    // Вместо загрузки в Replicate Files API возвращаем Data URI,
+    // чтобы обойти проблемы "Missing content" на файловом API.
+    const base64 = fileBuffer.toString('base64')
+    const dataUri = `data:${contentType};base64,${base64}`
+    console.log('✅ Конвертировано в Data URI, длина:', dataUri.length)
+    // Возвращаем как url, чтобы клиент продолжил использовать как imageInput
+    return res.json({ url: dataUri })
 
   } catch (error) {
     console.error('Upload error:', error)
