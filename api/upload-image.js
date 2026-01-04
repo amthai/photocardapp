@@ -100,15 +100,30 @@ export default async function handler(req, res) {
     
     const formData = new FormData()
     
-    // Создаем PassThrough stream и сразу отправляем buffer
-    const bufferStream = new PassThrough()
-    bufferStream.end(fileBuffer) // Отправляем buffer и завершаем stream
+    // Создаем Readable stream с правильной реализацией
+    // Stream должен читаться постепенно, а не сразу весь buffer
+    let bufferIndex = 0
+    const bufferStream = new Readable({
+      read(size) {
+        // Читаем chunk размером size из buffer
+        if (bufferIndex >= fileBuffer.length) {
+          this.push(null) // Завершаем stream когда весь buffer прочитан
+          return
+        }
+        
+        const chunk = fileBuffer.slice(bufferIndex, bufferIndex + size)
+        bufferIndex += chunk.length
+        this.push(chunk)
+      }
+    })
     
     formData.append('file', bufferStream, {
       filename: filename,
       contentType: contentType,
       knownLength: fileBuffer.length
     })
+    
+    console.log('✅ Stream создан, размер buffer:', fileBuffer.length, 'байт')
 
     const headers = {
       'Authorization': `Token ${REPLICATE_API_KEY}`,
