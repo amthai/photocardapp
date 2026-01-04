@@ -282,35 +282,31 @@ export async function generateCard(photoFile, style) {
     console.log('Начинаем генерацию...')
     console.log('Загруженное изображение:', photoFile.name, 'размер:', photoFile.size, 'тип:', photoFile.type)
     
-    // Загружаем референс изображение (URL -> Data URI)
+    // Референс: загружаем из public/img и сразу сжимаем в Data URI (избегаем дополнительного fetch к Blob)
     let referenceImageUrl = null
     if (style.referenceImage) {
       try {
-        const refUrl = await loadReferenceImage(style.referenceImage)
-        referenceImageUrl = await urlToCompressedDataUri(refUrl, 1024, 0.85)
-        console.log('✅ Референс загружен и сконвертирован в Data URI')
+        const response = await fetch(style.referenceImage)
+        if (!response.ok) throw new Error(`Не удалось загрузить референс: ${response.status}`)
+        const blob = await response.blob()
+        const fileName = style.referenceImage.split('/').pop() || 'reference.jpg'
+        const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' })
+        referenceImageUrl = await compressImage(file, 1024, 0.85)
+        console.log('✅ Референс загружен и сжат в Data URI')
       } catch (refError) {
         console.warn('⚠️ Не удалось загрузить референс:', refError.message)
-        // Продолжаем без референса, но предупреждаем
       }
     }
     
-    // Загружаем изображение пользователя в Blob (URL), затем конвертируем в сжатый Data URI
+    // Пользовательское фото: сразу сжимаем в Data URI (без повторных сетевых запросов)
     let imageInput
     try {
-      const imageUrl = await uploadImageToReplicate(photoFile)
-      console.log('✅ Изображение пользователя загружено в Blob')
-      console.log('  URL:', imageUrl)
-      if (!imageUrl || !imageUrl.startsWith('http')) {
-        throw new Error('Получен невалидный URL от Blob Storage')
-      }
-      // Конвертируем URL в сжатый Data URI, чтобы модель точно увидела пиксели
-      imageInput = await urlToCompressedDataUri(imageUrl, 1024, 0.85)
-      console.log('✅ Изображение пользователя сконвертировано в Data URI')
+      imageInput = await compressImage(photoFile, 1024, 0.85)
+      console.log('✅ Изображение пользователя сжато в Data URI')
       console.log('  Длина:', imageInput.length, 'символов')
-    } catch (uploadError) {
-      console.error('❌ Ошибка загрузки изображения:', uploadError.message)
-      throw new Error(`Не удалось загрузить изображение: ${uploadError.message}`)
+    } catch (err) {
+      console.error('❌ Ошибка сжатия изображения:', err.message)
+      throw new Error(`Не удалось подготовить изображение: ${err.message}`)
     }
     
     // Финальная проверка, что изображение есть
