@@ -14,35 +14,7 @@ const CARD_STYLES = [
     name: 'Новогодняя',
     emoji: '🎄',
     prompt: 'Festive winter background with snowflakes, Christmas decorations, warm lighting. New Year greeting card style. Photorealistic, high quality.',
-    reference: 'winter holiday card with people'
-  },
-  {
-    id: 'travel',
-    name: 'Путешествие',
-    emoji: '✈️',
-    prompt: 'Exotic travel background with locations, suitcases, maps, famous landmarks. Travel adventure greeting card style. Photorealistic, high quality.',
-    reference: 'travel adventure card with people'
-  },
-  {
-    id: 'romantic',
-    name: 'Романтическая',
-    emoji: '💕',
-    prompt: 'Romantic background with hearts, flowers, soft lighting, warm colors. Romantic greeting card style. Photorealistic, high quality.',
-    reference: 'romantic card with couple'
-  },
-  {
-    id: 'birthday',
-    name: 'День рождения',
-    emoji: '🎂',
-    prompt: 'Festive background with balloons, confetti, cake, party decorations. Birthday greeting card style. Photorealistic, high quality.',
-    reference: 'birthday party card with people'
-  },
-  {
-    id: 'nature',
-    name: 'Природа',
-    emoji: '🌲',
-    prompt: 'Natural background with landscapes, trees, flowers, mountains, peaceful natural scenes. Nature greeting card style. Photorealistic, high quality.',
-    reference: 'nature landscape card with people'
+    referenceImage: '/img/newyear.jpeg' // Путь к референсу
   }
 ]
 

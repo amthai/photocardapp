@@ -80,6 +80,37 @@ async function uploadImageToReplicate(photoFile) {
   return imageUrl
 }
 
+// Загружает референс изображение из папки public/img
+async function loadReferenceImage(referencePath) {
+  console.log('📥 Загружаем референс изображение:', referencePath)
+  
+  try {
+    // Загружаем изображение как blob
+    const response = await fetch(referencePath)
+    
+    if (!response.ok) {
+      throw new Error(`Не удалось загрузить референс: ${response.status}`)
+    }
+    
+    const blob = await response.blob()
+    
+    // Конвертируем blob в File для совместимости с uploadImageToReplicate
+    const fileName = referencePath.split('/').pop() || 'reference.jpg'
+    const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' })
+    
+    console.log('✅ Референс загружен, размер:', file.size, 'байт')
+    
+    // Загружаем в Replicate Files API
+    const referenceUrl = await uploadImageToReplicate(file)
+    console.log('✅ Референс загружен в Replicate, URL:', referenceUrl)
+    
+    return referenceUrl
+  } catch (error) {
+    console.error('❌ Ошибка загрузки референса:', error)
+    throw new Error(`Ошибка загрузки референса: ${error.message}`)
+  }
+}
+
 async function waitForPrediction(predictionId) {
   const maxAttempts = 60
   let attempts = 0
@@ -154,7 +185,7 @@ export async function generateCard(photoFile, style) {
     // Формируем промпт с учетом стиля
     // Для image-to-image промпт должен явно указывать на сохранение лица/человека из исходного изображения
     // Добавляем инструкции по сохранению лица в начало промпта
-    const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${style.prompt} The person from the original photo should remain unchanged, only the background and style should change.`
+    const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${style.prompt} The person from the original photo should remain unchanged, only the background and style should change. Use the reference image as a style guide for the background and overall composition.`
     
     console.log('📝 ПРОМПТ ДЛЯ ГЕНЕРАЦИИ:')
     console.log('  Стиль:', style.name)
@@ -164,12 +195,24 @@ export async function generateCard(photoFile, style) {
     console.log('Начинаем генерацию...')
     console.log('Загруженное изображение:', photoFile.name, 'размер:', photoFile.size, 'тип:', photoFile.type)
     
-    // Пробуем загрузить изображение в Replicate Files API
+    // Загружаем референс изображение
+    let referenceImageUrl = null
+    if (style.referenceImage) {
+      try {
+        referenceImageUrl = await loadReferenceImage(style.referenceImage)
+        console.log('✅ Референс загружен:', referenceImageUrl)
+      } catch (refError) {
+        console.warn('⚠️ Не удалось загрузить референс:', refError.message)
+        // Продолжаем без референса, но предупреждаем
+      }
+    }
+    
+    // Пробуем загрузить изображение пользователя в Replicate Files API
     // Если не получится (Missing content), используем Data URI как fallback
     let imageInput
     try {
       imageInput = await uploadImageToReplicate(photoFile)
-      console.log('✅ Изображение загружено в Replicate Files API')
+      console.log('✅ Изображение пользователя загружено в Replicate Files API')
       console.log('  URL:', imageInput)
       console.log('  URL валидный:', imageInput.startsWith('http'))
       
@@ -240,13 +283,16 @@ export async function generateCard(photoFile, style) {
       throw new Error('Не удалось получить изображение для генерации')
     }
     
-    console.log('🔍 ПРОВЕРКА ИЗОБРАЖЕНИЯ ПЕРЕД ОТПРАВКОЙ:')
-    console.log('  Изображение присутствует:', !!imageInput)
+    console.log('🔍 ПРОВЕРКА ИЗОБРАЖЕНИЙ ПЕРЕД ОТПРАВКОЙ:')
+    console.log('  Изображение пользователя присутствует:', !!imageInput)
     console.log('  Тип:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'НЕИЗВЕСТНО')
-    console.log('  Первые 100 символов:', imageInput.substring(0, 100))
+    console.log('  Референс присутствует:', !!referenceImageUrl)
+    if (referenceImageUrl) {
+      console.log('  Референс URL:', referenceImageUrl)
+    }
     
     // Используем Replicate с выбранной моделью (по умолчанию Nano Banana)
-    return await generateWithReplicate(imageInput, fullPrompt, style)
+    return await generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, style)
     
   } catch (error) {
     console.error('Generation API error:', error)
@@ -267,14 +313,15 @@ export async function generateCard(photoFile, style) {
   }
 }
 
-async function generateWithReplicate(imageInput, fullPrompt, style) {
+async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, style) {
     // Используем модель из переменной окружения (по умолчанию Nano Banana)
     let modelVersion = REPLICATE_MODEL
     
     console.log('Используем Replicate с моделью:', modelVersion)
     console.log('Промпт:', fullPrompt.substring(0, 100) + '...')
-    console.log('Изображение (тип):', imageInput.startsWith('http') ? 'URL' : 'Data URI')
-    console.log('Изображение (первые 80 символов):', imageInput.substring(0, 80))
+    console.log('Изображение пользователя (тип):', imageInput.startsWith('http') ? 'URL' : 'Data URI')
+    console.log('Изображение пользователя (первые 80 символов):', imageInput.substring(0, 80))
+    console.log('Референс изображение:', referenceImageUrl ? 'Присутствует' : 'Отсутствует')
     
     // Формируем запрос в зависимости от модели
     let requestBody
@@ -286,7 +333,8 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageInput, // URL или Data URI изображения
+          image: imageInput, // URL или Data URI изображения пользователя
+          reference_image: referenceImageUrl, // Референс изображение
           num_outputs: 1,
           aspect_ratio: '1:1',
           output_format: 'png',
@@ -317,24 +365,27 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageParam, // URL или Data URI изображения
+          image: imageParam, // URL или Data URI изображения пользователя
           init_image: initImageParam, // Пробуем base64 без префикса
+          reference_image: referenceImageUrl, // Референс изображение для стиля
           num_outputs: 1,
           aspect_ratio: '1:1',
           strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
           guidance_scale: 7.5 // Умеренное значение для баланса между промптом и исходным изображением
         }
       }
-      console.log('✅ Используем nano-banana с параметрами image и init_image')
+      console.log('✅ Используем nano-banana с параметрами image, init_image и reference_image')
       console.log('  image тип:', typeof imageParam, 'длина:', imageParam.length)
       console.log('  init_image тип:', typeof initImageParam, 'длина:', initImageParam.length)
+      console.log('  reference_image:', referenceImageUrl ? 'Присутствует' : 'Отсутствует')
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
       console.log('  - Промпт (первые 200 символов):', fullPrompt.substring(0, 200))
-      console.log('  - Изображение присутствует:', !!imageInput)
-      console.log('  - Тип изображения:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'Неизвестно')
-      console.log('  - Длина изображения:', imageInput.length, 'символов')
+      console.log('  - Изображение пользователя присутствует:', !!imageInput)
+      console.log('  - Тип изображения пользователя:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'Неизвестно')
+      console.log('  - Длина изображения пользователя:', imageInput.length, 'символов')
+      console.log('  - Референс присутствует:', !!referenceImageUrl)
       console.log('  - Все параметры input:', Object.keys(requestBody.input))
       console.log('  - Значение strength:', requestBody.input.strength)
     } else {
@@ -344,6 +395,7 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
         input: {
           prompt: fullPrompt,
           image: imageInput,
+          reference_image: referenceImageUrl, // Референс изображение
           num_outputs: 1,
           strength: 0.98, // Высокое значение для сохранения исходного изображения
           guidance_scale: 7.5,
@@ -363,8 +415,9 @@ async function generateWithReplicate(imageInput, fullPrompt, style) {
     
     console.log('🔍 ФИНАЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ:')
     console.log('  Модель:', modelVersion)
-    console.log('  Изображение в requestBody.input.image:', !!requestBody.input.image)
-    console.log('  Изображение в requestBody.input.init_image:', !!requestBody.input.init_image)
+    console.log('  Изображение пользователя в requestBody.input.image:', !!requestBody.input.image)
+    console.log('  Изображение пользователя в requestBody.input.init_image:', !!requestBody.input.init_image)
+    console.log('  Референс в requestBody.input.reference_image:', !!requestBody.input.reference_image)
     console.log('  Изображение присутствует в JSON строке:', hasImageInRequest)
     console.log('  Размер JSON запроса:', requestBodyString.length, 'символов')
     console.log('  Параметры input:', Object.keys(requestBody.input))
