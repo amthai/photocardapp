@@ -129,7 +129,7 @@ export default async function handler(req, res) {
     try {
       // Токен Vercel Blob Storage
       // Используем токен как есть - библиотека @vercel/blob сама обработает его
-      const BLOB_READ_WRITE_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || 'blobs store_lbgUC3ZSH1uYZv3d'
+      const BLOB_READ_WRITE_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || 'vercel_blob_rw_lbgUC3ZSH1uYZv3d_J37o97DQ9IkHnLEguLSPJYSxfXvr93'
       
       // Генерируем уникальное имя файла
       const timestamp = Date.now()
