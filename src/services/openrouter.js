@@ -267,6 +267,13 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
     // Используем модель из переменной окружения (по умолчанию Nano Banana)
     let modelVersion = REPLICATE_MODEL
 
+    // Flux 1.1 Pro сейчас игнорирует image-to-image в нашем пайплайне → принудительно fallback на nano-banana,
+    // чтобы гарантировать img2img c сохранением лица и reference_image.
+    if (modelVersion.includes('flux')) {
+      console.warn('⚠️ Flux img2img даёт рандом: переключаемся на google/nano-banana')
+      modelVersion = 'google/nano-banana'
+    }
+    
     console.log('Используем Replicate с моделью:', modelVersion)
     console.log('Промпт:', fullPrompt.substring(0, 100) + '...')
     console.log('Изображение пользователя (тип):', imageInput.startsWith('http') ? 'URL' : 'Data URI')
@@ -283,17 +290,16 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
         input: {
           prompt: fullPrompt,
           image: imageInput,             // URL изображения пользователя
-          init_image: imageInput,        // ЯВНЫЙ img2img
           reference_image: referenceImageUrl || undefined, // даём модели явный реф для стиля
           num_outputs: 1,
           aspect_ratio: '1:1',
           output_format: 'png',
           output_quality: 90,
-          strength: 0.9,                 // высокая сохранность лица/композиции
+          strength: 0.45,                // ниже, чтобы сохранять лицо/композицию
           guidance_scale: 7.0            // умеренный вес промпта
         }
       }
-      console.log('✅ Flux Pro: image + init_image + optional reference_image')
+      console.log('✅ Flux Pro: image + optional reference_image')
       console.log('  image URL:', imageInput)
       console.log('  reference_image:', referenceImageUrl || 'Отсутствует')
     } else if (modelVersion.includes('nano-banana')) {
