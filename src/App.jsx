@@ -5,7 +5,7 @@ import StyleSelector from './components/StyleSelector'
 import GenerateButton from './components/GenerateButton'
 import LoadingSpinner from './components/LoadingSpinner'
 import ResultCard from './components/ResultCard'
-import { generateCard } from './services/openrouter'
+import { generateCard } from './services/api'
 import './App.css'
 
 const CARD_STYLES = [
