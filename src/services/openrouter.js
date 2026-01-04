@@ -343,38 +343,39 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
       }
       console.log('✅ Используем Flux Pro - точно поддерживает image-to-image')
     } else if (modelVersion.includes('nano-banana')) {
-      // Nano Banana поддерживает image-to-image
-      // Используем только URL (Replicate больше не поддерживает Data URI)
+      // Nano Banana: пробуем image-to-image с init_image + reference_image
+      // Передаем и image, и init_image одинаково, чтобы принудить модель использовать входное фото
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageInput, // URL изображения пользователя
+          image: imageInput,        // URL изображения пользователя
+          init_image: imageInput,   // дублируем в init_image для совместимости
           num_outputs: 1,
           aspect_ratio: '1:1',
-          strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
-          guidance_scale: 7.5 // Умеренное значение для баланса между промптом и исходным изображением
+          strength: 0.9,            // чуть ниже, чтобы дать место стилю, но сохранить лицо
+          guidance_scale: 8.0       // слегка повышаем, чтобы промпт и референс сильнее влияли
         }
       }
       
-      // Добавляем референс как reference_image
-      // nano-banana может поддерживать reference_image для стиля
+      // Добавляем референс как reference_image и control_image (некоторые модели используют control_image)
       if (referenceImageUrl) {
         requestBody.input.reference_image = referenceImageUrl
-        console.log('✅ Референс добавлен как reference_image')
+        requestBody.input.control_image = referenceImageUrl
+        console.log('✅ Референс добавлен как reference_image и control_image')
       }
       
-      console.log('✅ Используем nano-banana с параметрами image и reference_image')
-      console.log('  image URL:', imageInput.substring(0, 100))
+      console.log('✅ Используем nano-banana с image, init_image и reference/control image')
+      console.log('  image URL:', imageInput.substring(0, 120))
       if (referenceImageUrl) {
-        console.log('  reference_image URL:', referenceImageUrl.substring(0, 100))
+        console.log('  reference/control URL:', referenceImageUrl.substring(0, 120))
       }
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
       console.log('  - Промпт (первые 200 символов):', fullPrompt.substring(0, 200))
       console.log('  - Изображение пользователя присутствует:', !!imageInput)
-      console.log('  - Тип изображения пользователя:', imageInput.startsWith('http') ? 'URL' : imageInput.startsWith('data:') ? 'Data URI' : 'Неизвестно')
+      console.log('  - Тип изображения пользователя:', imageInput.startsWith('http') ? 'URL' : 'Data URI')
       console.log('  - Длина изображения пользователя:', imageInput.length, 'символов')
       console.log('  - Референс присутствует:', !!referenceImageUrl)
       console.log('  - Все параметры input:', Object.keys(requestBody.input))
