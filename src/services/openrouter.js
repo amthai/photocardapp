@@ -5,8 +5,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.MODE === 'production' ? '/api' : 'http://localhost:3001/api')
 
 // Выбор модели для генерации через Replicate
-// По умолчанию ставим SD 3.5 img2img; можно переопределить VITE_REPLICATE_MODEL
-const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'stability-ai/stable-diffusion-3.5-large'
+// Переключаемся на Flux Pro (гарантированное img2img)
+const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'black-forest-labs/flux-1.1-pro'
 
 // (Удалены функции сжатия/Data URI — для Flux Pro используем прямые URL)
 
