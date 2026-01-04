@@ -1,10 +1,8 @@
-import fetch from 'node-fetch'
 import FormData from 'form-data'
-import { Readable, createReadStream } from 'stream'
+import { Readable } from 'stream'
 import { IncomingForm } from 'formidable'
-import { readFileSync, unlinkSync, writeFileSync } from 'fs'
+import { readFileSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
 
 // Для Vercel serverless functions
 
@@ -99,83 +97,67 @@ export default async function handler(req, res) {
 
     console.log('Загружаем файл в Replicate Files API...')
     
-    // Сохраняем buffer во временный файл и используем его как stream
-    // Это более надежный способ для form-data
-    const tempFile = join(tmpdir(), `upload-${Date.now()}-${filename}`)
-    let tempFileCreated = false
+    // Используем тот же подход, что в server.js - простой Readable stream из buffer
+    // Это работает надежно и не требует записи во временные файлы
+    const formData = new FormData()
     
-    try {
-      writeFileSync(tempFile, fileBuffer)
-      tempFileCreated = true
-      console.log('✅ Временный файл создан:', tempFile)
-      
-      const formData = new FormData()
-      const fileStream = createReadStream(tempFile)
-      
-      formData.append('file', fileStream, {
-        filename: filename,
-        contentType: contentType,
-        knownLength: fileBuffer.length
-      })
-      
-      console.log('✅ Stream создан из файла, размер:', fileBuffer.length, 'байт')
-      
-      const headers = {
-        'Authorization': `Token ${REPLICATE_API_KEY}`,
-        ...formData.getHeaders()
-      }
-      
-      console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
-      console.log('Content-Type:', headers['content-type']?.substring(0, 80))
-      
-      const response = await fetch('https://api.replicate.com/v1/files', {
-        method: 'POST',
-        headers: headers,
-        body: formData
-      })
-      
-      // Удаляем временный файл после отправки
-      try {
-        if (tempFileCreated) {
-          unlinkSync(tempFile)
-          console.log('✅ Временный файл для Replicate удален')
-        }
-      } catch (unlinkError) {
-        console.warn('⚠️ Не удалось удалить временный файл для Replicate:', unlinkError)
-      }
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Ошибка Replicate API:', response.status, errorText)
-        let errorData
-        try {
-          errorData = JSON.parse(errorText)
-        } catch {
-          errorData = { error: errorText }
-        }
-        return res.status(response.status).json(errorData)
-      }
-
-      const data = await response.json()
-      console.log('✅ Файл успешно загружен в Replicate Files API')
-      console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
-      console.log('  data.url:', data.url)
-      console.log('  data.urls:', data.urls)
-      console.log('  data.urls?.get:', data.urls?.get)
-      
-      return res.json(data)
-    } catch (uploadError) {
-      // Удаляем временный файл в случае ошибки
-      try {
-        if (tempFileCreated) {
-          unlinkSync(tempFile)
-          console.log('✅ Временный файл для Replicate удален после ошибки')
-        }
-      } catch (unlinkError) {
-        console.warn('⚠️ Не удалось удалить временный файл для Replicate:', unlinkError)
-      }
-      throw uploadError
+    // Создаем Readable stream из Buffer - точно так же, как в server.js
+    const bufferStream = new Readable()
+    bufferStream.push(fileBuffer)
+    bufferStream.push(null) // Завершаем stream
+    
+    // Добавляем stream в form-data
+    formData.append('file', bufferStream, {
+      filename: filename,
+      contentType: contentType,
+      knownLength: fileBuffer.length
+    })
+    
+    console.log('✅ Stream создан из buffer, размер:', fileBuffer.length, 'байт')
+    console.log('  Buffer is Buffer:', Buffer.isBuffer(fileBuffer))
+    
+    const headers = {
+      'Authorization': `Token ${REPLICATE_API_KEY}`,
+      ...formData.getHeaders()
     }
+    
+    console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
+    console.log('Content-Type:', headers['content-type']?.substring(0, 80))
+    
+    // Используем node-fetch явно, как в server.js
+    const nodeFetch = await import('node-fetch')
+    const fetchFn = nodeFetch.default
+    
+    console.log('Используем node-fetch для загрузки файла')
+    
+    const response = await fetchFn('https://api.replicate.com/v1/files', {
+      method: 'POST',
+      headers: headers,
+      body: formData
+    })
+    
+    console.log('Ответ Replicate API, статус:', response.status)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Ошибка Replicate API:', response.status, errorText)
+      let errorData
+      try {
+        errorData = JSON.parse(errorText)
+      } catch {
+        errorData = { error: errorText }
+      }
+      return res.status(response.status).json(errorData)
+    }
+
+    const data = await response.json()
+    console.log('✅ Файл успешно загружен в Replicate Files API')
+    console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
+    console.log('  data.url:', data.url)
+    console.log('  data.urls:', data.urls)
+    console.log('  data.urls?.get:', data.urls?.get)
+    
+    return res.json(data)
 
   } catch (error) {
     console.error('Upload error:', error)
