@@ -8,6 +8,45 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
 // nano-banana поддерживает image-to-image
 const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'google/nano-banana'
 
+// Преобразует URL изображения в сжатый Data URI (jpeg) с ограничением размера
+async function urlToCompressedDataUri(url, maxSize = 1024, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    fetch(url)
+      .then(res => res.blob())
+      .then(blob => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const img = new Image()
+          img.onload = () => {
+            let width = img.width
+            let height = img.height
+            if (width > maxSize || height > maxSize) {
+              if (width > height) {
+                height = (height * maxSize) / width
+                width = maxSize
+              } else {
+                width = (width * maxSize) / height
+                height = maxSize
+              }
+            }
+            const canvas = document.createElement('canvas')
+            canvas.width = width
+            canvas.height = height
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(img, 0, 0, width, height)
+            const dataUri = canvas.toDataURL('image/jpeg', quality)
+            resolve(dataUri)
+          }
+          img.onerror = () => reject(new Error('Ошибка загрузки изображения'))
+          img.src = e.target.result
+        }
+        reader.onerror = () => reject(new Error('Ошибка чтения blob'))
+        reader.readAsDataURL(blob)
+      })
+      .catch(err => reject(err))
+  })
+}
+
 // Сжимает изображение для уменьшения размера Data URI
 // Максимальный размер: 1024x1024, качество: 0.8
 async function compressImage(file, maxSize = 1024, quality = 0.8) {
@@ -243,34 +282,35 @@ export async function generateCard(photoFile, style) {
     console.log('Начинаем генерацию...')
     console.log('Загруженное изображение:', photoFile.name, 'размер:', photoFile.size, 'тип:', photoFile.type)
     
-    // Загружаем референс изображение
+    // Загружаем референс изображение (URL -> Data URI)
     let referenceImageUrl = null
     if (style.referenceImage) {
       try {
-        referenceImageUrl = await loadReferenceImage(style.referenceImage)
-        console.log('✅ Референс загружен:', referenceImageUrl)
+        const refUrl = await loadReferenceImage(style.referenceImage)
+        referenceImageUrl = await urlToCompressedDataUri(refUrl, 1024, 0.85)
+        console.log('✅ Референс загружен и сконвертирован в Data URI')
       } catch (refError) {
         console.warn('⚠️ Не удалось загрузить референс:', refError.message)
         // Продолжаем без референса, но предупреждаем
       }
     }
     
-    // Загружаем изображение пользователя в Replicate Files API
-    // Replicate больше не поддерживает Data URI, нужны только URL
+    // Загружаем изображение пользователя в Blob (URL), затем конвертируем в сжатый Data URI
     let imageInput
     try {
-      imageInput = await uploadImageToReplicate(photoFile)
-      console.log('✅ Изображение пользователя загружено в Replicate Files API')
-      console.log('  URL:', imageInput)
-      console.log('  URL валидный:', imageInput.startsWith('http'))
-      
-      // Проверяем, что URL валидный
-      if (!imageInput || !imageInput.startsWith('http')) {
-        throw new Error('Получен невалидный URL от Replicate Files API')
+      const imageUrl = await uploadImageToReplicate(photoFile)
+      console.log('✅ Изображение пользователя загружено в Blob')
+      console.log('  URL:', imageUrl)
+      if (!imageUrl || !imageUrl.startsWith('http')) {
+        throw new Error('Получен невалидный URL от Blob Storage')
       }
+      // Конвертируем URL в сжатый Data URI, чтобы модель точно увидела пиксели
+      imageInput = await urlToCompressedDataUri(imageUrl, 1024, 0.85)
+      console.log('✅ Изображение пользователя сконвертировано в Data URI')
+      console.log('  Длина:', imageInput.length, 'символов')
     } catch (uploadError) {
-      console.error('❌ Ошибка загрузки в Replicate Files API:', uploadError.message)
-      throw new Error(`Не удалось загрузить изображение: ${uploadError.message}. Replicate API требует URL, а не Data URI.`)
+      console.error('❌ Ошибка загрузки изображения:', uploadError.message)
+      throw new Error(`Не удалось загрузить изображение: ${uploadError.message}`)
     }
     
     // Финальная проверка, что изображение есть
