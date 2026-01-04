@@ -1,8 +1,6 @@
 import FormData from 'form-data'
 import { Readable } from 'stream'
-import { IncomingForm } from 'formidable'
-import { readFileSync, unlinkSync } from 'fs'
-import { tmpdir } from 'os'
+import busboy from 'busboy'
 
 // Для Vercel serverless functions
 
@@ -36,57 +34,68 @@ export default async function handler(req, res) {
     let filename = 'photo.jpg'
     let contentType = 'image/jpeg'
 
-    // Используем formidable для парсинга multipart/form-data на Vercel
-    const form = new IncomingForm({
-      uploadDir: tmpdir(),
-      keepExtensions: true,
-      maxFileSize: 10 * 1024 * 1024, // 10MB
+    // Используем busboy для парсинга multipart/form-data на Vercel
+    const bb = busboy({ 
+      headers: req.headers,
+      limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB
+      }
     })
 
-    let fields, files
-    try {
-      [fields, files] = await form.parse(req)
-    } catch (parseError) {
-      console.error('❌ Ошибка парсинга формы:', parseError)
-      return res.status(400).json({ 
-        error: 'Ошибка парсинга формы', 
-        detail: parseError.message 
-      })
-    }
-
-    console.log('📁 Поля формы:', Object.keys(fields))
-    console.log('📁 Файлы:', Object.keys(files))
-
-    // Ищем файл в поле 'image'
-    const imageFile = files.image?.[0]
-    
-    if (!imageFile) {
-      console.error('❌ Файл не найден в поле "image"')
-      console.error('  Доступные поля:', Object.keys(files))
-      return res.status(400).json({ error: 'Изображение не предоставлено', detail: 'Missing content' })
-    }
-
-    // Читаем файл
-    let tempFilePath = imageFile.filepath
-    try {
-      fileBuffer = readFileSync(tempFilePath)
-      filename = imageFile.originalFilename || 'photo.jpg'
-      contentType = imageFile.mimetype || 'image/jpeg'
-      console.log('✅ Файл прочитан, размер:', fileBuffer.length, 'байт, тип:', contentType)
-    } catch (readError) {
-      console.error('❌ Ошибка чтения файла:', readError)
-      return res.status(500).json({ error: 'Ошибка чтения файла', detail: readError.message })
-    } finally {
-      // Удаляем временный файл после чтения
-      try {
-        if (tempFilePath) {
-          unlinkSync(tempFilePath)
-          console.log('✅ Временный файл удален')
+    await new Promise((resolve, reject) => {
+      bb.on('file', (name, file, info) => {
+        console.log('📁 Получен файл:', name, 'filename:', info.filename, 'mimeType:', info.mimeType)
+        
+        if (name === 'image') {
+          filename = info.filename || 'photo.jpg'
+          contentType = info.mimeType || 'image/jpeg'
+          
+          const chunks = []
+          file.on('data', (chunk) => {
+            chunks.push(chunk)
+          })
+          file.on('end', () => {
+            fileBuffer = Buffer.concat(chunks)
+            console.log('✅ Файл прочитан, размер:', fileBuffer.length, 'байт')
+          })
+          file.on('error', (err) => {
+            console.error('❌ Ошибка чтения файла:', err)
+            reject(err)
+          })
+        } else {
+          file.resume()
         }
-      } catch (unlinkError) {
-        console.warn('⚠️ Не удалось удалить временный файл:', unlinkError)
+      })
+
+      bb.on('finish', () => {
+        console.log('✅ Busboy finish, fileBuffer:', !!fileBuffer, 'размер:', fileBuffer?.length)
+        resolve()
+      })
+
+      bb.on('error', (err) => {
+        console.error('❌ Busboy error:', err)
+        reject(err)
+      })
+
+      // На Vercel req должен быть stream
+      // Пробуем разные способы подключения
+      if (req.pipe && typeof req.pipe === 'function') {
+        console.log('📤 Используем req.pipe()')
+        req.pipe(bb)
+      } else if (req.on && typeof req.on === 'function') {
+        console.log('📤 Используем req.on() события')
+        req.on('data', (chunk) => {
+          bb.write(chunk)
+        })
+        req.on('end', () => {
+          bb.end()
+        })
+        req.on('error', reject)
+      } else {
+        console.error('❌ req не поддерживает stream операции')
+        reject(new Error('Request не поддерживает stream'))
       }
-    }
+    })
 
     console.log('✅ Файл получен, размер:', fileBuffer.length, 'байт, тип:', contentType)
 
