@@ -1,9 +1,10 @@
 import fetch from 'node-fetch'
 import FormData from 'form-data'
-import { Readable, PassThrough } from 'stream'
+import { Readable, createReadStream } from 'stream'
 import { IncomingForm } from 'formidable'
-import { readFileSync, unlinkSync } from 'fs'
+import { readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
+import { join } from 'path'
 
 // Для Vercel serverless functions
 
@@ -98,68 +99,84 @@ export default async function handler(req, res) {
 
     console.log('Загружаем файл в Replicate Files API...')
     
-    const formData = new FormData()
+    // Сохраняем buffer во временный файл и используем его как stream
+    // Это более надежный способ для form-data
+    const tempFile = join(tmpdir(), `upload-${Date.now()}-${filename}`)
+    let tempFileCreated = false
     
-    // Создаем Readable stream с правильной реализацией
-    // Stream должен читаться постепенно, а не сразу весь buffer
-    let bufferIndex = 0
-    const bufferStream = new Readable({
-      read(size) {
-        // Читаем chunk размером size из buffer
-        if (bufferIndex >= fileBuffer.length) {
-          this.push(null) // Завершаем stream когда весь buffer прочитан
-          return
-        }
-        
-        const chunk = fileBuffer.slice(bufferIndex, bufferIndex + size)
-        bufferIndex += chunk.length
-        this.push(chunk)
+    try {
+      writeFileSync(tempFile, fileBuffer)
+      tempFileCreated = true
+      console.log('✅ Временный файл создан:', tempFile)
+      
+      const formData = new FormData()
+      const fileStream = createReadStream(tempFile)
+      
+      formData.append('file', fileStream, {
+        filename: filename,
+        contentType: contentType,
+        knownLength: fileBuffer.length
+      })
+      
+      console.log('✅ Stream создан из файла, размер:', fileBuffer.length, 'байт')
+      
+      const headers = {
+        'Authorization': `Token ${REPLICATE_API_KEY}`,
+        ...formData.getHeaders()
       }
-    })
-    
-    formData.append('file', bufferStream, {
-      filename: filename,
-      contentType: contentType,
-      knownLength: fileBuffer.length
-    })
-    
-    console.log('✅ Stream создан, размер buffer:', fileBuffer.length, 'байт')
-
-    const headers = {
-      'Authorization': `Token ${REPLICATE_API_KEY}`,
-      ...formData.getHeaders()
-    }
-    
-    console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
-    console.log('Content-Type:', headers['content-type']?.substring(0, 80))
-    console.log('Buffer is Buffer:', Buffer.isBuffer(fileBuffer))
-    
-    const response = await fetch('https://api.replicate.com/v1/files', {
-      method: 'POST',
-      headers: headers,
-      body: formData
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Ошибка Replicate API:', response.status, errorText)
-      let errorData
+      
+      console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
+      console.log('Content-Type:', headers['content-type']?.substring(0, 80))
+      
+      const response = await fetch('https://api.replicate.com/v1/files', {
+        method: 'POST',
+        headers: headers,
+        body: formData
+      })
+      
+      // Удаляем временный файл после отправки
       try {
-        errorData = JSON.parse(errorText)
-      } catch {
-        errorData = { error: errorText }
+        if (tempFileCreated) {
+          unlinkSync(tempFile)
+          console.log('✅ Временный файл для Replicate удален')
+        }
+      } catch (unlinkError) {
+        console.warn('⚠️ Не удалось удалить временный файл для Replicate:', unlinkError)
       }
-      return res.status(response.status).json(errorData)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Ошибка Replicate API:', response.status, errorText)
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText }
+        }
+        return res.status(response.status).json(errorData)
+      }
+
+      const data = await response.json()
+      console.log('✅ Файл успешно загружен в Replicate Files API')
+      console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
+      console.log('  data.url:', data.url)
+      console.log('  data.urls:', data.urls)
+      console.log('  data.urls?.get:', data.urls?.get)
+      
+      return res.json(data)
+    } catch (uploadError) {
+      // Удаляем временный файл в случае ошибки
+      try {
+        if (tempFileCreated) {
+          unlinkSync(tempFile)
+          console.log('✅ Временный файл для Replicate удален после ошибки')
+        }
+      } catch (unlinkError) {
+        console.warn('⚠️ Не удалось удалить временный файл для Replicate:', unlinkError)
+      }
+      throw uploadError
     }
 
-    const data = await response.json()
-    console.log('✅ Файл успешно загружен в Replicate Files API')
-    console.log('  Полный ответ Replicate:', JSON.stringify(data, null, 2))
-    console.log('  data.url:', data.url)
-    console.log('  data.urls:', data.urls)
-    console.log('  data.urls?.get:', data.urls?.get)
-    
-    res.json(data)
   } catch (error) {
     console.error('Upload error:', error)
     res.status(500).json({ error: error.message })
