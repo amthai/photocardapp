@@ -221,60 +221,25 @@ export async function generateCard(photoFile, style) {
       }
     } catch (uploadError) {
       console.warn('⚠️ Загрузка в Replicate Files API не работает:', uploadError.message)
-      console.warn('⚠️ Пробуем альтернативный способ загрузки...')
+      console.warn('⚠️ Используем Data URI как fallback')
       
-      // Пробуем загрузить напрямую через fetch с правильным Content-Type
-      try {
-        const directFormData = new FormData()
-        directFormData.append('file', photoFile)
-        
-        const REPLICATE_API_KEY = import.meta.env.VITE_REPLICATE_API_KEY
-        if (REPLICATE_API_KEY) {
-          const directResponse = await fetch('https://api.replicate.com/v1/files', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Token ${REPLICATE_API_KEY}`
-            },
-            body: directFormData
-          })
-          
-          if (directResponse.ok) {
-            const directData = await directResponse.json()
-            imageInput = directData.url || directData.urls?.get
-            if (imageInput && imageInput.startsWith('http')) {
-              console.log('✅ Изображение загружено напрямую в Replicate Files API')
-              console.log('  URL:', imageInput)
-            } else {
-              throw new Error('Невалидный URL от Replicate')
-            }
+      // Fallback: конвертируем в Data URI
+      const reader = new FileReader()
+      imageInput = await new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+          const result = reader.result
+          if (!result || !result.startsWith('data:image/')) {
+            reject(new Error('Не удалось конвертировать изображение в Data URI'))
           } else {
-            throw new Error(`Direct upload failed: ${directResponse.status}`)
+            resolve(result)
           }
-        } else {
-          throw new Error('API ключ не найден для прямой загрузки')
         }
-      } catch (directError) {
-        console.warn('⚠️ Прямая загрузка не работает:', directError.message)
-        console.warn('⚠️ Используем Data URI как последний fallback')
-        
-        // Fallback: конвертируем в Data URI
-        const reader = new FileReader()
-        imageInput = await new Promise((resolve, reject) => {
-          reader.onloadend = () => {
-            const result = reader.result
-            if (!result || !result.startsWith('data:image/')) {
-              reject(new Error('Не удалось конвертировать изображение в Data URI'))
-            } else {
-              resolve(result)
-            }
-          }
-          reader.onerror = () => reject(new Error('Ошибка чтения файла'))
-          reader.readAsDataURL(photoFile)
-        })
-        console.log('✅ Изображение конвертировано в Data URI')
-        console.log('  Длина:', imageInput.length, 'символов')
-        console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
-      }
+        reader.onerror = () => reject(new Error('Ошибка чтения файла'))
+        reader.readAsDataURL(photoFile)
+      })
+      console.log('✅ Изображение конвертировано в Data URI')
+      console.log('  Длина:', imageInput.length, 'символов')
+      console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
     }
     
     // Финальная проверка, что изображение есть
