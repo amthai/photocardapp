@@ -1,6 +1,6 @@
 import fetch from 'node-fetch'
 import FormData from 'form-data'
-import { Readable } from 'stream'
+import { Readable, PassThrough } from 'stream'
 import { IncomingForm } from 'formidable'
 import { readFileSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
@@ -91,12 +91,18 @@ export default async function handler(req, res) {
 
     console.log('✅ Файл получен, размер:', fileBuffer.length, 'байт, тип:', contentType)
 
+    if (!fileBuffer || fileBuffer.length === 0) {
+      console.error('❌ Buffer пустой или отсутствует')
+      return res.status(400).json({ error: 'Файл пустой', detail: 'Empty file buffer' })
+    }
+
     console.log('Загружаем файл в Replicate Files API...')
     
     const formData = new FormData()
-    const bufferStream = new Readable()
-    bufferStream.push(fileBuffer)
-    bufferStream.push(null)
+    
+    // Создаем PassThrough stream и сразу отправляем buffer
+    const bufferStream = new PassThrough()
+    bufferStream.end(fileBuffer) // Отправляем buffer и завершаем stream
     
     formData.append('file', bufferStream, {
       filename: filename,
@@ -108,6 +114,10 @@ export default async function handler(req, res) {
       'Authorization': `Token ${REPLICATE_API_KEY}`,
       ...formData.getHeaders()
     }
+    
+    console.log('Отправляем в Replicate, размер файла:', fileBuffer.length, 'байт')
+    console.log('Content-Type:', headers['content-type']?.substring(0, 80))
+    console.log('Buffer is Buffer:', Buffer.isBuffer(fileBuffer))
     
     const response = await fetch('https://api.replicate.com/v1/files', {
       method: 'POST',
