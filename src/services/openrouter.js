@@ -144,18 +144,11 @@ async function loadReferenceImage(referencePath) {
     
     console.log('✅ Референс загружен, размер:', file.size, 'байт')
     
-    // Пробуем загрузить в Replicate Files API
-    try {
-      const referenceUrl = await uploadImageToReplicate(file)
-      console.log('✅ Референс загружен в Replicate, URL:', referenceUrl)
-      return referenceUrl
-    } catch (uploadError) {
-      console.warn('⚠️ Загрузка референса в Replicate не работает, используем сжатый Data URI')
-      // Fallback: сжимаем и возвращаем Data URI
-      const compressedDataUri = await compressImage(file, 1024, 0.8)
-      console.log('✅ Референс сжат в Data URI, длина:', compressedDataUri.length)
-      return compressedDataUri
-    }
+    // Загружаем в Replicate Files API
+    // Replicate больше не поддерживает Data URI, нужны только URL
+    const referenceUrl = await uploadImageToReplicate(file)
+    console.log('✅ Референс загружен в Replicate, URL:', referenceUrl)
+    return referenceUrl
   } catch (error) {
     console.error('❌ Ошибка загрузки референса:', error)
     throw new Error(`Ошибка загрузки референса: ${error.message}`)
@@ -260,8 +253,8 @@ export async function generateCard(photoFile, style) {
       }
     }
     
-    // Пробуем загрузить изображение пользователя в Replicate Files API
-    // Если не получится (Missing content), используем Data URI как fallback
+    // Загружаем изображение пользователя в Replicate Files API
+    // Replicate больше не поддерживает Data URI, нужны только URL
     let imageInput
     try {
       imageInput = await uploadImageToReplicate(photoFile)
@@ -274,16 +267,8 @@ export async function generateCard(photoFile, style) {
         throw new Error('Получен невалидный URL от Replicate Files API')
       }
     } catch (uploadError) {
-      console.warn('⚠️ Загрузка в Replicate Files API не работает:', uploadError.message)
-      console.warn('⚠️ Используем сжатый Data URI как fallback')
-      
-      // Fallback: сжимаем изображение перед конвертацией в Data URI
-      // Это уменьшит размер и поможет избежать ошибки 413 Payload Too Large
-      imageInput = await compressImage(photoFile, 1024, 0.8)
-      console.log('✅ Изображение сжато и конвертировано в Data URI')
-      console.log('  Длина:', imageInput.length, 'символов')
-      console.log('  Размер в MB:', (imageInput.length / 1024 / 1024).toFixed(2))
-      console.log('  Начинается с data:image/:', imageInput.startsWith('data:image/'))
+      console.error('❌ Ошибка загрузки в Replicate Files API:', uploadError.message)
+      throw new Error(`Не удалось загрузить изображение: ${uploadError.message}. Replicate API требует URL, а не Data URI.`)
     }
     
     // Финальная проверка, что изображение есть
@@ -357,27 +342,12 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
       console.log('✅ Используем Flux Pro - точно поддерживает image-to-image')
     } else if (modelVersion.includes('nano-banana')) {
       // Nano Banana поддерживает image-to-image
-      // Если это Data URI, пробуем извлечь base64 и использовать оба формата
-      let imageParam = imageInput
-      let initImageParam = imageInput
-      
-      // Если это Data URI, извлекаем base64 часть для некоторых моделей
-      if (imageInput.startsWith('data:image/')) {
-        const base64Match = imageInput.match(/^data:image\/[^;]+;base64,(.+)$/)
-        if (base64Match) {
-          const base64Data = base64Match[1]
-          console.log('📝 Извлечен base64 из Data URI, длина:', base64Data.length)
-          // Некоторые модели могут требовать base64 без префикса
-          initImageParam = base64Data
-        }
-      }
-      
+      // Используем только URL (Replicate больше не поддерживает Data URI)
       requestBody = {
         version: modelVersion,
         input: {
           prompt: fullPrompt,
-          image: imageParam, // URL или Data URI изображения пользователя
-          init_image: initImageParam, // Пробуем base64 без префикса
+          image: imageInput, // URL изображения пользователя
           num_outputs: 1,
           aspect_ratio: '1:1',
           strength: 0.98, // Очень высокое значение для максимального сохранения лица и внешности
@@ -385,22 +355,18 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
         }
       }
       
-      // Пробуем добавить референс как control_image или reference_image
-      // Если модель поддерживает один из этих параметров
+      // Добавляем референс как reference_image
+      // nano-banana может поддерживать reference_image для стиля
       if (referenceImageUrl) {
-        // Пробуем control_image (более распространенный параметр для стиля)
-        requestBody.input.control_image = referenceImageUrl
-        // Также пробуем reference_image на случай, если модель поддерживает его
         requestBody.input.reference_image = referenceImageUrl
+        console.log('✅ Референс добавлен как reference_image')
       }
       
-      console.log('✅ Используем nano-banana с параметрами image, init_image')
+      console.log('✅ Используем nano-banana с параметрами image и reference_image')
+      console.log('  image URL:', imageInput.substring(0, 100))
       if (referenceImageUrl) {
-        console.log('  control_image:', 'Присутствует')
-        console.log('  reference_image:', 'Присутствует')
+        console.log('  reference_image URL:', referenceImageUrl.substring(0, 100))
       }
-      console.log('  image тип:', typeof imageParam, 'длина:', imageParam.length)
-      console.log('  init_image тип:', typeof initImageParam, 'длина:', initImageParam.length)
       
       console.log('🔍 ДЕТАЛЬНАЯ ПРОВЕРКА ЗАПРОСА:')
       console.log('  - Промпт присутствует:', !!fullPrompt, 'Длина:', fullPrompt.length)
@@ -428,23 +394,19 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
     }
     
     // Финальная проверка перед отправкой
-    if (!requestBody.input.image && !requestBody.input.init_image) {
+    if (!requestBody.input.image) {
       throw new Error('КРИТИЧЕСКАЯ ОШИБКА: Изображение отсутствует в запросе!')
     }
     
     // Проверяем, что изображение действительно в запросе
     const requestBodyString = JSON.stringify(requestBody)
-    const hasImageInRequest = requestBodyString.includes(imageInput.substring(0, 50))
     
     console.log('🔍 ФИНАЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ:')
     console.log('  Модель:', modelVersion)
-    console.log('  Изображение пользователя в requestBody.input.image:', !!requestBody.input.image)
-    console.log('  Изображение пользователя в requestBody.input.init_image:', !!requestBody.input.init_image)
-    console.log('  Референс в requestBody.input.reference_image:', !!requestBody.input.reference_image)
-    console.log('  Изображение присутствует в JSON строке:', hasImageInRequest)
+    console.log('  Изображение пользователя (URL):', requestBody.input.image)
+    console.log('  Референс (URL):', requestBody.input.reference_image || 'Отсутствует')
     console.log('  Размер JSON запроса:', requestBodyString.length, 'символов')
     console.log('  Параметры input:', Object.keys(requestBody.input))
-    console.log('  Значение image (первые 100 символов):', requestBody.input.image ? requestBody.input.image.substring(0, 100) : 'ОТСУТСТВУЕТ')
     
     const response = await fetch(`${API_BASE_URL}/predictions`, {
       method: 'POST',
