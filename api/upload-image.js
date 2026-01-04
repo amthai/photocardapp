@@ -133,42 +133,39 @@ export default async function handler(req, res) {
     
     const formData = new FormData()
     
-    // Пробуем использовать Buffer напрямую - form-data должен поддерживать это
-    // Если не работает, используем stream
-    try {
-      formData.append('file', fileBuffer, {
-        filename: filename,
-        contentType: contentType,
-        knownLength: fileBuffer.length
-      })
-      console.log('✅ Buffer добавлен напрямую в form-data')
-    } catch (bufferError) {
-      console.log('⚠️ Buffer не работает, используем stream:', bufferError.message)
-      // Fallback: используем stream
-      const bufferStream = new Readable()
-      bufferStream.push(fileBuffer)
-      bufferStream.push(null)
-      
-      formData.append('file', bufferStream, {
-        filename: filename,
-        contentType: contentType,
-        knownLength: fileBuffer.length
-      })
-      console.log('✅ Stream добавлен в form-data')
-    }
+    // Создаем Readable stream из Buffer - это должно работать надежно
+    const bufferStream = new Readable()
+    bufferStream.push(fileBuffer)
+    bufferStream.push(null) // Завершаем stream
+    
+    // Добавляем stream в form-data
+    formData.append('file', bufferStream, {
+      filename: filename,
+      contentType: contentType,
+      knownLength: fileBuffer.length
+    })
+    
+    console.log('✅ Stream создан и добавлен в form-data')
+    console.log('  Stream readable:', bufferStream.readable)
+    console.log('  Stream readableEnded:', bufferStream.readableEnded)
     
     const headers = {
       'Authorization': `Token ${REPLICATE_API_KEY}`,
       ...formData.getHeaders()
     }
     
-    console.log('  Content-Type:', headers['content-type']?.substring(0, 100))
+    console.log('  Headers созданы')
+    console.log('  Content-Type:', headers['content-type']?.substring(0, 150))
+    console.log('  Authorization присутствует:', !!headers['Authorization'])
+    console.log('  Content-Length в headers:', headers['content-length'])
     
     // Используем node-fetch явно
     const nodeFetch = await import('node-fetch')
     const fetchFn = nodeFetch.default
     
     console.log('Отправляем запрос в Replicate API...')
+    console.log('  URL: https://api.replicate.com/v1/files')
+    console.log('  Method: POST')
     
     const response = await fetchFn('https://api.replicate.com/v1/files', {
       method: 'POST',
@@ -176,7 +173,9 @@ export default async function handler(req, res) {
       body: formData
     })
     
-    console.log('Ответ Replicate API, статус:', response.status)
+    console.log('Ответ Replicate API получен')
+    console.log('  Статус:', response.status)
+    console.log('  StatusText:', response.statusText)
     
     if (!response.ok) {
       const errorText = await response.text()
