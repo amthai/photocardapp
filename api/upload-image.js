@@ -1,9 +1,9 @@
-import { put } from '@vercel/blob'
+import FormData from 'form-data'
 import busboy from 'busboy'
 import { Readable as StreamReadable } from 'stream'
 
 // Для Vercel serverless functions
-// Используем Vercel Blob Storage вместо Replicate Files API
+// Загружаем в Replicate Files API - правильный способ
 
 export default async function handler(req, res) {
   // CORS headers
@@ -22,6 +22,11 @@ export default async function handler(req, res) {
   }
 
   try {
+    const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY || process.env.VITE_REPLICATE_API_KEY
+
+    if (!REPLICATE_API_KEY) {
+      return res.status(500).json({ error: 'API ключ не настроен' })
+    }
 
     console.log('📥 Получен запрос на загрузку изображения')
     console.log('  Content-Type:', req.headers['content-type'])
@@ -121,40 +126,76 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Файл пустой', detail: 'Empty file buffer' })
     }
 
-    // Загружаем в Vercel Blob Storage
-    // Это намного проще и надежнее, чем Replicate Files API
-    console.log('📤 Загружаем файл в Vercel Blob Storage...')
+    // Загружаем в Replicate Files API
+    // Исправленный способ - используем Buffer напрямую в form-data
+    console.log('📤 Загружаем файл в Replicate Files API...')
     console.log('  Buffer размер:', fileBuffer.length, 'байт')
     console.log('  Filename:', filename)
     console.log('  ContentType:', contentType)
 
     try {
-      // Генерируем уникальное имя файла
-      const timestamp = Date.now()
-      const randomId = Math.random().toString(36).substring(2, 15)
-      const extension = filename.split('.').pop() || 'jpg'
-      const blobName = `images/${timestamp}-${randomId}.${extension}`
-
-      // Загружаем в Vercel Blob
-      const blob = await put(blobName, fileBuffer, {
+      const formData = new FormData()
+      
+      // ВАЖНО: добавляем Buffer напрямую, не через stream
+      // FormData автоматически обработает Buffer правильно
+      formData.append('file', fileBuffer, {
+        filename: filename,
         contentType: contentType,
-        access: 'public', // Публичный доступ для Replicate
-        addRandomSuffix: false // Уже добавили случайный ID
+        knownLength: fileBuffer.length
       })
 
-      console.log('✅ Файл успешно загружен в Vercel Blob Storage')
-      console.log('  URL:', blob.url)
-      
-      if (!blob.url || !blob.url.startsWith('http')) {
-        throw new Error('Получен невалидный URL от Vercel Blob')
+      console.log('✅ FormData создан, отправляем в Replicate...')
+
+      const nodeFetch = await import('node-fetch')
+      const fetchFn = nodeFetch.default
+
+      const response = await fetchFn('https://api.replicate.com/v1/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${REPLICATE_API_KEY}`,
+          ...formData.getHeaders()
+        },
+        body: formData
+      })
+
+      console.log('Ответ Replicate API, статус:', response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Ошибка Replicate API:', response.status, errorText)
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText }
+        }
+        return res.status(response.status).json(errorData)
       }
 
-      return res.json({ url: blob.url })
-    } catch (blobError) {
-      console.error('❌ Ошибка загрузки в Vercel Blob:', blobError)
+      const data = await response.json()
+      console.log('✅ Файл успешно загружен в Replicate Files API')
+      console.log('  Полный ответ:', JSON.stringify(data, null, 2))
+      
+      // Replicate Files API возвращает объект с полем url
+      const fileUrl = data.url || data.urls?.get
+      
+      if (!fileUrl) {
+        console.error('❌ URL не получен от Replicate')
+        return res.status(500).json({ error: 'URL не получен от Replicate API', detail: data })
+      }
+      
+      if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+        console.error('❌ Получен невалидный URL:', fileUrl)
+        return res.status(500).json({ error: 'Получен невалидный URL от Replicate API' })
+      }
+      
+      console.log('✅ URL файла:', fileUrl)
+      return res.json({ url: fileUrl })
+    } catch (uploadError) {
+      console.error('❌ Ошибка загрузки в Replicate:', uploadError)
       return res.status(500).json({ 
-        error: 'Ошибка загрузки в Vercel Blob Storage', 
-        detail: blobError.message 
+        error: 'Ошибка загрузки изображения', 
+        detail: uploadError.message 
       })
     }
 
