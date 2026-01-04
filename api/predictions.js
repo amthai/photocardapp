@@ -1,4 +1,5 @@
 import fetch from 'node-fetch'
+import { fal } from '@fal-ai/client'
 
 export default async function handler(req, res) {
   // CORS headers
@@ -56,10 +57,7 @@ export default async function handler(req, res) {
 
   try {
     const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY || process.env.VITE_REPLICATE_API_KEY
-
-    if (!REPLICATE_API_KEY) {
-      return res.status(500).json({ error: 'API ключ не настроен' })
-    }
+    const FAL_KEY = process.env.FAL_KEY
 
     // В Vercel body уже распарсен автоматически для application/json
     // Если это строка, парсим вручную
@@ -89,6 +87,55 @@ export default async function handler(req, res) {
       image: body.input?.image ? (body.input.image.substring(0, 100) + '...') : 'MISSING'
     }, null, 2))
     
+    // ==== FAL GPT-Image 1.5 edit ====
+    if (body.version && body.version.startsWith('fal-ai/')) {
+      if (!FAL_KEY) {
+        return res.status(500).json({ error: 'FAL_KEY не настроен' })
+      }
+      fal.config({ credentials: FAL_KEY })
+
+      try {
+        const imageUrls = []
+        if (body.input?.image) imageUrls.push(body.input.image)
+        if (body.input?.reference_image) imageUrls.push(body.input.reference_image)
+
+        const falInput = {
+          prompt: body.input?.prompt,
+          image_urls: imageUrls,
+          image_size: '1024x1024',
+          background: 'auto',
+          quality: 'high',
+          input_fidelity: 'high',
+          num_images: 1,
+          output_format: 'png'
+        }
+
+        const result = await fal.subscribe(body.version, {
+          input: falInput,
+          logs: true
+        })
+
+        const imageUrl = result?.data?.images?.[0]?.url
+        console.log('✅ FAL запрос завершен. URL:', imageUrl)
+
+        return res.json({
+          id: result?.requestId || result?.request_id || null,
+          status: imageUrl ? 'succeeded' : 'failed',
+          output: imageUrl,
+          output_images: result?.data?.images,
+          logs: result?.logs || null
+        })
+      } catch (error) {
+        console.error('❌ FAL error:', error)
+        return res.status(500).json({ error: error.message || 'FAL request failed' })
+      }
+    }
+
+    // ==== Replicate ====
+    if (!REPLICATE_API_KEY) {
+      return res.status(500).json({ error: 'API ключ Replicate не настроен' })
+    }
+
     const response = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {

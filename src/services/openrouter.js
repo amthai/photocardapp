@@ -4,9 +4,8 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
   (import.meta.env.MODE === 'production' ? '/api' : 'http://localhost:3001/api')
 
-// Выбор модели для генерации через Replicate
-// По умолчанию ставим SD 3.5 img2img; можно переопределить VITE_REPLICATE_MODEL
-const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'stability-ai/stable-diffusion-3.5-large'
+// Выбор модели (Replicate или fal). По умолчанию fal GPT-Image 1.5 edit (img2img).
+const REPLICATE_MODEL = import.meta.env.VITE_REPLICATE_MODEL || 'fal-ai/gpt-image-1.5/edit'
 
 // (Удалены функции сжатия/Data URI — для Flux Pro используем прямые URL)
 
@@ -276,7 +275,20 @@ async function generateWithReplicate(imageInput, referenceImageUrl, fullPrompt, 
     // Формируем запрос в зависимости от модели
     let requestBody
     
-  if (modelVersion.includes('flux')) {
+  if (modelVersion.includes('fal-ai/')) {
+      // fal GPT-Image 1.5 edit: image-to-image, принимает массив image_urls
+      requestBody = {
+        version: modelVersion,
+        input: {
+          prompt: fullPrompt,
+          image: imageInput,
+          reference_image: referenceImageUrl || null
+        }
+      }
+      console.log('✅ FAL: image + reference_image')
+      console.log('  image URL:', imageInput)
+      console.log('  reference_image:', referenceImageUrl || 'Отсутствует')
+    } else if (modelVersion.includes('flux')) {
       // Flux Pro: используем image-to-image + reference_image (если есть)
       requestBody = {
         version: modelVersion,
