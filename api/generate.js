@@ -1,8 +1,8 @@
 import Replicate from 'replicate';
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
-// По умолчанию ставим публичный IP-Adapter вариант; можно переопределить через env
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'lucataco/flux-1.1-pro-ip';
+// Модель Replicate (по умолчанию multi-reference seeddream-4)
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'bytedance/seeddream-4';
 
 if (!REPLICATE_API_KEY) {
   throw new Error('REPLICATE_API_KEY is not set');
@@ -73,19 +73,13 @@ export default async function handler(req, res) {
 
     const finalPrompt =
       prompt ||
-      'Festive winter background with snowflakes, Christmas decorations, warm lighting. New Year greeting card style. Photorealistic, high quality.';
-
-    const fullPrompt = `Keep the person's face and appearance from the input image exactly as they are. ${finalPrompt} The person from the original photo should remain unchanged, only the background and style should change. Use the reference image as a style guide for the background and overall composition.`;
+      'Festive winter postcard in painterly style with vintage colors. Preserve the person exactly, keep natural skin tones, and match the reference style/background.';
 
     const output = await replicate.run(REPLICATE_MODEL, {
       input: {
-        prompt: fullPrompt,
-        image: user_image_url,
-        ip_adapter_image: referenceUrl,
-        num_outputs: 1,
+        prompt: finalPrompt,
+        image_input: [user_image_url, referenceUrl],
         aspect_ratio: '1:1',
-        strength: 0.72,
-        guidance_scale: 8.0,
         output_format: 'png',
         output_quality: 90
       }
