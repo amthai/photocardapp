@@ -1,7 +1,4 @@
-import fs from 'fs/promises';
-import path from 'path';
 import Replicate from 'replicate';
-// Используем нативные Web API из Node 18 (fetch/FormData/Blob)
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
 const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'black-forest-labs/flux-1.1-pro';
@@ -14,41 +11,9 @@ const replicate = new Replicate({
   auth: REPLICATE_API_KEY
 });
 
-/**
- * Reads reference image by style id and uploads it to Replicate Files API.
- */
-async function uploadReferenceImage(style) {
-  const referencePath = path.join(process.cwd(), 'public', 'img', `${style}.jpeg`);
-
-  let refBuffer;
-  try {
-    refBuffer = await fs.readFile(referencePath);
-  } catch (err) {
-    throw new Error(`Reference image not found: ${referencePath}`);
-  }
-
-  const formData = new FormData();
-  const blob = new Blob([refBuffer], { type: 'image/jpeg' });
-  formData.append('file', blob, `${style}.jpeg`);
-
-  const resp = await fetch('https://api.replicate.com/v1/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${REPLICATE_API_KEY}`
-    },
-    body: formData
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Failed to upload reference: ${resp.status} ${text}`);
-  }
-
-  const data = await resp.json();
-  return (
-    data.url ||
-    (data.urls && typeof data.urls === 'object' ? data.urls.get : null)
-  );
+function getPublicReferenceUrl(style) {
+  const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+  return `${host}/img/${style}.jpeg`;
 }
 
 async function readJsonBody(req) {
@@ -81,10 +46,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'user_image_url is required' });
     }
 
-    const referenceUrl = await uploadReferenceImage(style);
-    if (!referenceUrl) {
-      return res.status(500).json({ error: 'Failed to get reference URL' });
-    }
+    // Используем статичный публичный референс из /public/img
+    const referenceUrl = getPublicReferenceUrl(style);
 
     const finalPrompt =
       prompt ||
