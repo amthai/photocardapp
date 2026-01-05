@@ -1,7 +1,7 @@
 import Replicate from 'replicate';
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'black-forest-labs/flux-1.1-pro';
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'cjwbw/flux-1.1-pro-ip';
 
 if (!REPLICATE_API_KEY) {
   throw new Error('REPLICATE_API_KEY is not set');
