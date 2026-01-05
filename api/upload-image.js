@@ -52,6 +52,7 @@ export default async function handler(req, res) {
     const blob = await put(fileName, fileBuffer, {
       access: 'public',
       contentType: contentType,
+      addRandomSuffix: true, // избегаем конфликтов имен
     });
 
     return res.status(200).json({
