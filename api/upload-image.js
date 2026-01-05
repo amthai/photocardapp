@@ -1,51 +1,69 @@
 import { put } from '@vercel/blob';
+import { createRequire } from 'module';
 
-export default async function handler(request) {
-  if (request.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { 'Content-Type': 'application/json' } }
-    );
+const require = createRequire(import.meta.url);
+const Busboy = require('busboy');
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Парсим FormData
-    const formData = await request.formData();
-    const file = formData.get('file');
+    // Парсим multipart/form-data
+    const busboy = Busboy({ headers: req.headers });
 
-    if (!file || !(file instanceof File)) {
-      return new Response(
-        JSON.stringify({ error: 'No file provided' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    let fileBuffer = null;
+    let fileName = null;
+    let contentType = 'image/jpeg';
 
-    // Конвертируем File в ArrayBuffer, затем в Buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    await new Promise((resolve, reject) => {
+      busboy.on('file', (name, file, info) => {
+        const { filename, mimeType } = info;
+        fileName = filename || `image-${Date.now()}.jpg`;
+        contentType = mimeType || 'image/jpeg';
+        
+        const chunks = [];
+        file.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        file.on('end', () => {
+          fileBuffer = Buffer.concat(chunks);
+        });
+      });
 
-    // Загружаем в Vercel Blob Storage
-    const blob = await put(file.name || `image-${Date.now()}.jpg`, buffer, {
-      access: 'public',
-      contentType: file.type || 'image/jpeg',
+      busboy.on('finish', () => {
+        resolve();
+      });
+
+      busboy.on('error', (err) => {
+        reject(err);
+      });
+
+      req.pipe(busboy);
     });
 
-    return new Response(
-      JSON.stringify({
-        url: blob.url,
-        pathname: blob.pathname,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    if (!fileBuffer || !fileName) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // Загружаем в Vercel Blob Storage
+    const blob = await put(fileName, fileBuffer, {
+      access: 'public',
+      contentType: contentType,
+    });
+
+    return res.status(200).json({
+      url: blob.url,
+      pathname: blob.pathname,
+    });
   } catch (error) {
     console.error('Ошибка загрузки в Blob:', error);
-    return new Response(
-      JSON.stringify({
-        error: 'Ошибка загрузки изображения',
-        detail: error.message,
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return res.status(500).json({
+      error: 'Ошибка загрузки изображения',
+      detail: error.message,
+    });
   }
 }
 
