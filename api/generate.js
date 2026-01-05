@@ -1,8 +1,8 @@
 import Replicate from 'replicate';
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
-// По умолчанию базовая модель; для поддержки ip_adapter_image укажи в env нужный slug (например cjwbw/flux-1.1-pro-ip если доступен)
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'black-forest-labs/flux-1.1-pro';
+// По умолчанию ставим публичный IP-Adapter вариант; можно переопределить через env
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'lucataco/flux-1.1-pro-ip';
 
 if (!REPLICATE_API_KEY) {
   throw new Error('REPLICATE_API_KEY is not set');
