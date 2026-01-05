@@ -73,7 +73,7 @@ export default async function handler(req, res) {
 
     const finalPrompt =
       prompt ||
-      'Festive winter postcard in painterly style with vintage colors. Preserve the person exactly, keep natural skin tones, and match the reference style/background.';
+      'На референсе изображена новогодняя открытка с человеком. Сделай мне такую же новогоднюю открытку только с моей фотографией. Сохрани стиль который используется в референсе, сохрани цветокоррекцию и детализацию.';
 
     // Получаем версию модели через API, если не указана явно
     let modelToUse = REPLICATE_MODEL;
