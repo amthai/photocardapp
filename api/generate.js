@@ -1,8 +1,8 @@
 import Replicate from 'replicate';
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
-// Модель Replicate (по умолчанию multi-reference seeddream-4)
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'bytedance/seeddream-4';
+// Модель Replicate (по умолчанию multi-reference seedream-4)
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'bytedance/seedream-4';
 
 if (!REPLICATE_API_KEY) {
   throw new Error('REPLICATE_API_KEY is not set');
