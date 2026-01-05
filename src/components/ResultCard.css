@@ -33,16 +33,18 @@
 
 .result-image-container {
   width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
+  aspect-ratio: 9/16;
 }
 
 .result-image {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
-  max-height: 500px;
   object-fit: contain;
 }
 
