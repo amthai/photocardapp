@@ -11,7 +11,13 @@ const replicate = new Replicate({
   auth: REPLICATE_API_KEY
 });
 
+// Публичные ссылки референсов (например из Vercel Blob)
+const REFERENCE_URLS = {
+  newyear: 'https://lbguc3zsh1uyzv3d.public.blob.vercel-storage.com/1767548913407-vay4azsocze.jpeg'
+};
+
 function getPublicReferenceUrl(style) {
+  if (REFERENCE_URLS[style]) return REFERENCE_URLS[style];
   const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
   return `${host}/img/${style}.jpeg`;
 }
