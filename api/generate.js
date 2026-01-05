@@ -33,43 +33,6 @@ async function assertReachable(url) {
   }
 }
 
-/**
- * Качаем внешний URL и загружаем в Replicate Files API, чтобы гарантировать доступность.
- */
-async function reuploadToReplicateFiles(url, fallbackName) {
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    throw new Error(`Failed to download ${url}: ${resp.status} ${resp.statusText}`);
-  }
-  const arrayBuffer = await resp.arrayBuffer();
-  const contentType = resp.headers.get('content-type') || 'image/jpeg';
-  const blob = new Blob([arrayBuffer], { type: contentType });
-
-  const formData = new FormData();
-  formData.append('file', blob, fallbackName);
-
-  const upload = await fetch('https://api.replicate.com/v1/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${REPLICATE_API_KEY}`
-    },
-    body: formData
-  });
-
-  if (!upload.ok) {
-    const text = await upload.text();
-    throw new Error(`Failed to upload to Replicate Files: ${upload.status} ${text}`);
-  }
-  const data = await upload.json();
-  const fileUrl =
-    data.url ||
-    (data.urls && typeof data.urls === 'object' ? data.urls.get : null);
-  if (!fileUrl) {
-    throw new Error('Replicate Files upload returned no url');
-  }
-  return fileUrl;
-}
-
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -107,10 +70,6 @@ export default async function handler(req, res) {
     await assertReachable(user_image_url);
     await assertReachable(referenceUrl);
 
-    // Заливаем обе картинки в Replicate Files, чтобы модель гарантированно их увидела
-    const userImageReplicateUrl = await reuploadToReplicateFiles(user_image_url, 'user.jpg');
-    const referenceReplicateUrl = await reuploadToReplicateFiles(referenceUrl, `${style}.jpeg`);
-
     const finalPrompt =
       prompt ||
       'Festive winter background with snowflakes, Christmas decorations, warm lighting. New Year greeting card style. Photorealistic, high quality.';
@@ -120,8 +79,8 @@ export default async function handler(req, res) {
     const output = await replicate.run(REPLICATE_MODEL, {
       input: {
         prompt: fullPrompt,
-        image: userImageReplicateUrl,
-        reference_image: referenceReplicateUrl,
+        image: user_image_url,
+        ip_adapter_image: referenceUrl,
         num_outputs: 1,
         aspect_ratio: '1:1',
         strength: 0.72,
