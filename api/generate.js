@@ -1,8 +1,8 @@
 import Replicate from 'replicate';
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
-// Модель Replicate (по умолчанию multi-reference seedream-4)
-const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'bytedance/seedream-4';
+// Модель Replicate (по умолчанию google/nano-banana-pro с поддержкой image_input)
+const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'google/nano-banana-pro';
 
 if (!REPLICATE_API_KEY) {
   throw new Error('REPLICATE_API_KEY is not set');
@@ -99,8 +99,8 @@ export default async function handler(req, res) {
         prompt: finalPrompt,
         image_input: [user_image_url, referenceUrl],
         aspect_ratio: '1:1',
-        output_format: 'png',
-        output_quality: 90
+        resolution: '2K',
+        output_format: 'png'
       }
     });
 
