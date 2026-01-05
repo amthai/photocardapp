@@ -3,15 +3,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.MODE === 'production' ? '/api' : 'http://localhost:8000/api')
 
 /**
- * Загружает изображение в Replicate и возвращает URL
+ * Загружает изображение в Vercel Blob Storage и возвращает публичный URL
  */
 export async function uploadImageToReplicate(photoFile) {
-  console.log('📤 Загружаем изображение в Replicate...')
+  console.log('📤 Загружаем изображение в Vercel Blob...')
   
   const formData = new FormData()
   formData.append('file', photoFile)
   
-  const response = await fetch(`${API_BASE_URL}/upload-image`, {
+  // Используем Vercel Blob endpoint
+  const uploadUrl = '/api/upload-image'
+  
+  const response = await fetch(uploadUrl, {
     method: 'POST',
     body: formData
   })
@@ -23,7 +26,7 @@ export async function uploadImageToReplicate(photoFile) {
   }
   
   const data = await response.json()
-  console.log('✅ Изображение загружено, URL:', data.url)
+  console.log('✅ Изображение загружено в Blob, URL:', data.url)
   return data.url
 }
 
