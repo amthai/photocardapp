@@ -1,6 +1,5 @@
-// API сервис для работы с Python бекендом
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
-  (import.meta.env.MODE === 'production' ? '/api' : 'http://localhost:8000/api')
+// API сервис для работы с Node/Vercel функциями
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
  * Загружает изображение в Vercel Blob Storage и возвращает публичный URL
@@ -73,7 +72,7 @@ export async function generateCard(photoFile, style) {
     
     // Улучшаем сообщения об ошибках
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error('Не удалось подключиться к серверу. Убедитесь, что Python бекенд запущен (python backend/main.py)')
+      throw new Error('Не удалось подключиться к серверу. Попробуйте позже.')
     } else if (error.message.includes('402') || error.message.includes('credit')) {
       throw new Error('Недостаточно кредитов на аккаунте Replicate. Пополните баланс.')
     } else if (error.message.includes('429') || error.message.includes('rate limit')) {
