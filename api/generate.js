@@ -75,7 +75,26 @@ export default async function handler(req, res) {
       prompt ||
       'Festive winter postcard in painterly style with vintage colors. Preserve the person exactly, keep natural skin tones, and match the reference style/background.';
 
-    const output = await replicate.run(REPLICATE_MODEL, {
+    // Получаем версию модели через API, если не указана явно
+    let modelToUse = REPLICATE_MODEL;
+    if (!REPLICATE_MODEL.includes(':')) {
+      try {
+        const modelInfo = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_MODEL}`, {
+          headers: { Authorization: `Token ${REPLICATE_API_KEY}` }
+        });
+        if (modelInfo.ok) {
+          const data = await modelInfo.json();
+          if (data.latest_version?.id) {
+            modelToUse = `${REPLICATE_MODEL}:${data.latest_version.id}`;
+            console.log(`Using model version: ${modelToUse}`);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch model version, using default:', err.message);
+      }
+    }
+
+    const output = await replicate.run(modelToUse, {
       input: {
         prompt: finalPrompt,
         image_input: [user_image_url, referenceUrl],
