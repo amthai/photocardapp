@@ -77,7 +77,13 @@ export default async function handler(req, res) {
 
     // Получаем версию модели через API, если не указана явно
     let modelToUse = REPLICATE_MODEL;
-    if (!REPLICATE_MODEL.includes(':')) {
+    let versionId = null;
+    
+    if (REPLICATE_MODEL.includes(':')) {
+      const parts = REPLICATE_MODEL.split(':');
+      modelToUse = parts[0];
+      versionId = parts[1];
+    } else {
       try {
         const modelInfo = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_MODEL}`, {
           headers: { Authorization: `Token ${REPLICATE_API_KEY}` }
@@ -85,8 +91,8 @@ export default async function handler(req, res) {
         if (modelInfo.ok) {
           const data = await modelInfo.json();
           if (data.latest_version?.id) {
-            modelToUse = `${REPLICATE_MODEL}:${data.latest_version.id}`;
-            console.log(`Using model version: ${modelToUse}`);
+            versionId = data.latest_version.id;
+            console.log(`Using model version: ${modelToUse}:${versionId}`);
           }
         }
       } catch (err) {
@@ -94,7 +100,12 @@ export default async function handler(req, res) {
       }
     }
 
-    const output = await replicate.run(modelToUse, {
+    console.log('🚀 Запускаем генерацию с моделью:', modelToUse, versionId ? `version: ${versionId}` : '');
+
+    // Создаём prediction (не ждём завершения)
+    const prediction = await replicate.predictions.create({
+      model: modelToUse,
+      version: versionId,
       input: {
         prompt: finalPrompt,
         image_input: [user_image_url, referenceUrl],
@@ -104,16 +115,13 @@ export default async function handler(req, res) {
       }
     });
 
-    let resultUrl;
-    if (Array.isArray(output)) {
-      resultUrl = output[0];
-    } else if (output && typeof output[Symbol.iterator] === 'function' && typeof output !== 'string') {
-      resultUrl = [...output][0];
-    } else {
-      resultUrl = output;
-    }
+    console.log('✅ Prediction создан:', prediction.id, 'Status:', prediction.status);
 
-    return res.status(200).json({ image_url: resultUrl });
+    // Возвращаем ID prediction, клиент будет проверять статус
+    return res.status(200).json({ 
+      prediction_id: prediction.id,
+      status: prediction.status
+    });
   } catch (error) {
     console.error('Ошибка генерации:', error);
     return res
