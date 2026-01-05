@@ -16,6 +16,17 @@ function getPublicReferenceUrl(style) {
   return `${host}/img/${style}.jpeg`;
 }
 
+async function assertReachable(url) {
+  try {
+    const resp = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' } });
+    if (!resp.ok) {
+      throw new Error(`Status ${resp.status}`);
+    }
+  } catch (err) {
+    throw new Error(`URL not reachable: ${url} (${err.message})`);
+  }
+}
+
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -48,6 +59,10 @@ export default async function handler(req, res) {
 
     // Используем статичный публичный референс из /public/img
     const referenceUrl = getPublicReferenceUrl(style);
+
+    // Проверяем доступность картинок до вызова модели
+    await assertReachable(user_image_url);
+    await assertReachable(referenceUrl);
 
     const finalPrompt =
       prompt ||
