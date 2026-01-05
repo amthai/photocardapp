@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import Replicate from 'replicate';
-import FormData from 'form-data';
+// Используем нативные Web API из Node 18 (fetch/FormData/Blob)
 
 const REPLICATE_API_KEY = process.env.REPLICATE_API_KEY;
 const REPLICATE_MODEL = process.env.REPLICATE_MODEL || 'black-forest-labs/flux-1.1-pro';
@@ -28,10 +28,8 @@ async function uploadReferenceImage(style) {
   }
 
   const formData = new FormData();
-  formData.append('file', refBuffer, {
-    filename: `${style}.jpeg`,
-    contentType: 'image/jpeg'
-  });
+  const blob = new Blob([refBuffer], { type: 'image/jpeg' });
+  formData.append('file', blob, `${style}.jpeg`);
 
   const resp = await fetch('https://api.replicate.com/v1/files', {
     method: 'POST',
