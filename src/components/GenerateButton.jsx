@@ -7,7 +7,7 @@ function GenerateButton({ onClick, disabled }) {
       onClick={onClick}
       disabled={disabled}
     >
-      ✨ Сделать открытку
+      Сделать открытку
     </button>
   )
 }

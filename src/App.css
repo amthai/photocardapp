@@ -16,17 +16,20 @@
 }
 
 .title {
-  font-size: 32px;
+  font-family: 'Suisse Intl', sans-serif;
+  font-size: 50px;
   font-weight: 700;
+  line-height: 0.9;
   color: white;
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: -4px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .subtitle {
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Suisse Intl', sans-serif;
+  font-size: 20px;
+  color: #ffffff;
   text-align: center;
   margin-bottom: 16px;
 }
